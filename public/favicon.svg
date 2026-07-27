@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="bg" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0a0a12"/>
+    </radialGradient>
+    <radialGradient id="coin" cx="38%" cy="32%" r="55%">
+      <stop offset="0%" stop-color="#ffee88"/>
+      <stop offset="35%" stop-color="#ffd700"/>
+      <stop offset="70%" stop-color="#cc9900"/>
+      <stop offset="100%" stop-color="#886600"/>
+    </radialGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#44eeff"/>
+      <stop offset="50%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0088cc"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow2">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)" stroke="#00d4ff" stroke-width="2.5"/>
+  <!-- Inner border glow -->
+  <rect x="3" y="3" width="58" height="58" rx="11" fill="none" stroke="#00d4ff" stroke-width="0.5" opacity="0.3"/>
+  <!-- Gold coin -->
+  <circle cx="32" cy="28" r="17" fill="url(#coin)" stroke="#aa7700" stroke-width="2" filter="url(#glow)"/>
+  <circle cx="32" cy="28" r="13" fill="none" stroke="#ffee88" stroke-width="0.8" opacity="0.4"/>
+  <!-- Dollar sign -->
+  <text x="32" y="35" text-anchor="middle" font-size="20" font-weight="bold" font-family="serif" fill="#775500" stroke="#ffee88" stroke-width="0.3">$</text>
+  <!-- Highlight -->
+  <ellipse cx="27" cy="20" rx="7" ry="4" fill="rgba(255,255,255,0.2)"/>
+  <!-- Lightning bolt below -->
+  <polygon points="26,48 32,42 29,46 38,48 32,56 35,52" fill="url(#bolt)" stroke="#003366" stroke-width="0.5" filter="url(#glow2)"/>
+  <!-- Small stars -->
+  <circle cx="12" cy="12" r="2" fill="#ffd700" opacity="0.7"/>
+  <circle cx="52" cy="12" r="1.5" fill="#00d4ff" opacity="0.6"/>
+  <circle cx="10" cy="52" r="1.5" fill="#ff4400" opacity="0.5"/>
+  <circle cx="54" cy="50" r="2" fill="#39ff14" opacity="0.5"/>
+</svg>

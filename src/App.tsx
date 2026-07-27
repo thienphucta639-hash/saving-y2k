@@ -184,12 +184,26 @@ function WinScreen({ challenge, userName, total, onClose }: { challenge: Challen
             </p>
             <p className="animate-electric" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '14px', lineHeight: '2.5' }}>{formatVND(total)}</p>
           </div>
+          {/* Streak info */}
+          <div className="my-2 py-2 flex items-center justify-center gap-3" style={{ border: '1px solid #ff880033', background: 'rgba(255,136,0,0.03)' }}>
+            <div className="text-center">
+              <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888' }}>CUP</p>
+              <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '16px', color: '#ffd700', textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>{(challenge.totalCups ?? 0) + 1}</p>
+            </div>
+            <Ic src="/images/y2k-flame.png" size={20} className="animate-flame" />
+            <div className="text-center">
+              <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888' }}>STREAK</p>
+              <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '16px', color: '#ff8800', textShadow: '0 0 8px rgba(255,136,0,0.4)' }}>{(challenge.streak ?? 0) + 1}x</p>
+            </div>
+          </div>
           <div className="flex justify-center gap-2 my-2">
             {['/images/y2k-flame.png', '/images/y2k-lightning.png', '/images/y2k-skull.png', '/images/y2k-dragon.png', '/images/y2k-star.png'].map((ic, i) => (
-              <Ic key={i} src={ic} size={22} className={i % 2 === 0 ? 'animate-flame' : 'animate-float'} />
+              <Ic key={i} src={ic} size={22} className={i % 2 === 0 ? 'animate-flame' : 'animate-float'} tap />
             ))}
           </div>
-          <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#555' }}>~ Bro quá đỉnhh! ~</p>
+          <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#555' }}>
+            {(challenge.streak ?? 0) >= 1 ? '~ Bro đang trên chuỗi chiến thắngg! ~' : '~ Bro quá đỉnhh! ~'}
+          </p>
           <button onClick={onClose} className="btn-3d-gold mt-3 px-6 py-2 flex items-center gap-2 mx-auto" style={{ fontFamily: "'VT323', monospace", fontSize: '18px' }}>
             <Ic src="/images/y2k-lightning.png" size={14} /> ĐÓNG <Ic src="/images/y2k-lightning.png" size={14} />
           </button>
@@ -340,9 +354,9 @@ function SetupScreen({ template, onStart, onBack }: { template: ChallengeTemplat
 }
 
 // ===== CHALLENGE PROGRESS =====
-function ChallengeProgress({ challenge, template, fixedAmt, onToggleDay, onBack, onQuit, userName }: {
+function ChallengeProgress({ challenge, template, fixedAmt, onToggleDay, onBack, onQuit, onComplete, userName }: {
   challenge: ChallengeData; template: ChallengeTemplate; fixedAmt: number;
-  onToggleDay: (d: number) => void; onBack: () => void; onQuit: () => void; userName: string;
+  onToggleDay: (d: number) => void; onBack: () => void; onQuit: () => void; onComplete: () => void; userName: string;
 }) {
   const [showWin, setShowWin] = useState(false);
   const [wheelDay, setWheelDay] = useState<number | null>(null);
@@ -408,18 +422,24 @@ function ChallengeProgress({ challenge, template, fixedAmt, onToggleDay, onBack,
   return (
     <div className="min-h-screen min-h-[100dvh] grid-pattern relative scanlines">
       <FloatingIcons />
-      {showWin && <WinScreen challenge={challenge} userName={userName} total={saved} onClose={() => setShowWin(false)} />}
+      {showWin && <WinScreen challenge={challenge} userName={userName} total={saved} onClose={() => { setShowWin(false); }} />}
       {quitStep > 0 && <QuitModal />}
 
       <div className="relative z-10 p-2 sm:p-3 max-w-5xl mx-auto">
         {/* Top bar */}
         <div className="flex justify-between items-center mb-3 gap-2">
           <button onClick={() => { playBack(); onBack(); }} className="btn-3d px-3 py-1 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
-            <Ic src="/images/y2k-flame.png" size={12} /> {'<<<'} VỀ
+            <Ic src="/images/y2k-flame.png" size={12} tap /> {'<<<'} VỀ
           </button>
-          <button onClick={() => { playQuitWarn(1); setQuitStep(1); }} className="btn-3d-red px-3 py-1 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '14px' }}>
-            <Ic src="/images/y2k-skull.png" size={12} /> THOÁT
-          </button>
+          {isDone ? (
+            <button onClick={() => { playNavigate(); onComplete(); }} className="btn-3d-gold px-4 py-1 flex items-center gap-1 animate-pulse-glow" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+              <Ic src="/images/y2k-trophy.png" size={14} tap /> HOÀN THÀNH
+            </button>
+          ) : (
+            <button onClick={() => { playQuitWarn(1); setQuitStep(1); }} className="btn-3d-red px-3 py-1 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '14px' }}>
+              <Ic src="/images/y2k-skull.png" size={12} tap /> THOÁT
+            </button>
+          )}
         </div>
 
         {/* Challenge info */}
@@ -607,8 +627,429 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
   );
 }
 
+// ===== SUGGEST — Gợi ý thử thách dựa trên thực tế =====
+type GoalType = 'travel'|'food'|'shopping'|'tuition'|'debt'|'emergency'|'gift'|'invest'|'';
+
+function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBack: () => void }) {
+  const [step, setStep] = useState(0);
+  const [income, setIncome] = useState('');
+  const [saving, setSaving] = useState('');
+  const [goal, setGoal] = useState<GoalType>('');
+  const [goalAmount, setGoalAmount] = useState('');
+  const [style, setStyle] = useState<'safe'|'medium'|'yolo'|''>('');
+  const [time, setTime] = useState<'short'|'medium'|'long'|''>('');
+  const [result, setResult] = useState<{ id: string; reason: string }[]>([]);
+
+  const incomeNum = parseInt(income.replace(/\D/g, '')) || 0;
+  const savingNum = parseInt(saving.replace(/\D/g, '')) || 0;
+  const savingPerDay = Math.round(savingNum / 30);
+  const goalNum = parseInt(goalAmount.replace(/\D/g, '')) || 0;
+
+  const goalLabels: Record<string, string> = {
+    travel: 'đi chơi/du lịch', food: 'ăn uống/cafe', shopping: 'mua đồ',
+    tuition: 'đóng tiền học', debt: 'trả nợ', emergency: 'quỹ dự phòng',
+    gift: 'mua quà tặng', invest: 'đầu tư/gửi tiết kiệm',
+  };
+
+  const calculate = () => {
+    const R: { id: string; reason: string; score: number }[] = [];
+    const db = savingPerDay;
+    const gl = goal;
+    const ga = goalNum;
+    const glLabel = goalLabels[gl] || '';
+
+    // Tính số ngày cần nếu có goal amount
+    const daysToGoal = ga > 0 && db > 0 ? Math.ceil(ga / db) : 0;
+    const needShort = daysToGoal > 0 && daysToGoal <= 30;
+
+    // ===== Gợi ý dựa trên MỤC ĐÍCH + TÀI CHÍNH + PHONG CÁCH =====
+
+    // 90 NGÀY KỶ LUẬT — trả nợ, tiền học, dự phòng, đầu tư (cần ổn định)
+    if (savingNum >= 100000) {
+      const daily = Math.min(Math.round(db / 1000) * 1000, 50000) || 20000;
+      let sc = 50;
+      if (gl === 'debt' || gl === 'tuition') sc += 30; // nợ/học cần đều đặn
+      if (gl === 'emergency' || gl === 'invest') sc += 25;
+      if (style === 'safe') sc += 15;
+      if (time === 'medium' || time === 'long') sc += 10;
+      if (ga > 0) {
+        const total90 = daily * 90;
+        if (total90 >= ga * 0.8) sc += 15;
+      }
+      R.push({ id: 'fixed90', score: sc,
+        reason: ga > 0
+          ? `Bỏ đều ${formatVND(daily)}/ngày x 90 ngày = ${formatVND(daily * 90)}. ${total90Enough(daily * 90, ga, glLabel)}`
+          : `Bỏ đều ${formatVND(daily)}/ngày — kỷ luật là vũ khí tốt nhất để ${glLabel || 'tiết kiệm'}!`
+      });
+    }
+
+    // 52 TUẦN THÉP — dài hơi, phù hợp du lịch lớn, đầu tư, tiền học
+    if (savingNum >= 200000) {
+      let sc = 45;
+      if (gl === 'travel' || gl === 'invest' || gl === 'tuition') sc += 25;
+      if (time === 'long') sc += 20;
+      if (style === 'safe') sc += 10;
+      if (ga > 0 && ga <= 15000000) sc += 10;
+      R.push({ id: '52week', score: sc,
+        reason: ga > 0
+          ? `52 tuần tăng dần, tổng ~13.7 triệu. ${total90Enough(13780000, ga, glLabel)}`
+          : `Mỗi tuần thêm 10k — nhẹ nhàng mà 1 năm gom đc 13.7 triệuu cho ${glLabel || 'mục tiêu dài hạn'}!`
+      });
+    }
+
+    // 365 NGÀY CHINH PHỤC — mục tiêu to, đầu tư, tiền học lớn
+    if (db >= 5000 && time !== 'short') {
+      let sc = 35;
+      if (gl === 'invest' || gl === 'tuition') sc += 25;
+      if (ga > 0 && ga >= 10000000) sc += 20;
+      if (time === 'long') sc += 15;
+      R.push({ id: '365day', score: sc,
+        reason: `Tăng dần mỗi ngày, cuối năm = ~66 triệu! ${ga > 0 ? `Dư sức cho ${glLabel} ${formatVND(ga)}.` : `Chinh phục mục tiêu to nhấtt!`}`
+      });
+    }
+
+    // 30 NGÀY ĐẾM NGƯỢC — mua quà, ăn uống, shopping (cần nhanh)
+    if (db >= 1000) {
+      let sc = 45;
+      if (gl === 'gift' || gl === 'food' || gl === 'shopping') sc += 25;
+      if (needShort) sc += 20;
+      if (time === 'short' || time === 'medium') sc += 10;
+      if (style === 'yolo') sc += 10;
+      R.push({ id: 'countdown30', score: sc,
+        reason: ga > 0
+          ? `30 ngày, tổng ~465k. ${needShort ? `Vừa đủ thời gian cho ${glLabel}!` : `Bước đệm nhẹ trước khi ${glLabel}.`}`
+          : `Bắt đầu mạnh, cuối nhẹ — phù hợp để dành ${glLabel || 'chi tiêu ngắn hạn'}!`
+      });
+    }
+
+    // 14 NGÀY NHÂN ĐÔI — shopping, quà tặng (ngắn + liều)
+    if (db >= 5000 && style !== 'safe') {
+      let sc = 40;
+      if (gl === 'shopping' || gl === 'gift') sc += 20;
+      if (needShort) sc += 15;
+      if (style === 'yolo') sc += 25;
+      if (time === 'short') sc += 10;
+      R.push({ id: 'double14', score: sc,
+        reason: `2 tuần, tổng ~16 triệu nếu chiến hết! ${gl === 'shopping' ? 'Đủ mua đồ xịnn!' : gl === 'gift' ? 'Quà xịn cho ngừi đặc biệtt!' : 'Thách thức bản thân cấp số nhânn!'}`
+      });
+    }
+
+    // 30 NGÀY MAY RỦI — ăn uống, cafe, vui vẻ
+    {
+      let sc = 40;
+      if (gl === 'food' || gl === 'travel') sc += 20;
+      if (style === 'medium') sc += 15;
+      if (time === 'short') sc += 10;
+      R.push({ id: 'random30', score: sc,
+        reason: `Quay vòng xoay mỗi ngày — vui, bất ngờ! ${gl === 'food' ? 'Gom đc bao nhiêu thì ăn bấy nhiêuu!' : `Không áp lực, tiết kiệm cho ${glLabel || 'bản thân'}!`}`
+      });
+    }
+
+    // 7 NGÀY BÃO TỐ — test ý chí, quà nhanh, ăn chơi cuối tuần
+    {
+      let sc = 35;
+      if (gl === 'gift' || gl === 'food') sc += 15;
+      if (needShort || time === 'short') sc += 25;
+      if (style === 'yolo') sc += 20;
+      R.push({ id: 'step7', score: sc,
+        reason: `7 ngày, tổng 885k. ${gl === 'gift' ? 'Đủ mua 1 món quà ý nghĩaa!' : gl === 'food' ? '1 tuần gom đủ 1 bữa xịnn!' : 'Nhanh gọn test ý chí trước khi chiến dàii!'}`
+      });
+    }
+
+    // 12 THÁNG ĐẠI CHIẾN — du lịch lớn, trả nợ, đầu tư, tiền học
+    if (savingNum >= 500000 && time !== 'short') {
+      let sc = 40;
+      if (gl === 'travel' || gl === 'debt' || gl === 'invest' || gl === 'tuition') sc += 25;
+      if (time === 'long') sc += 20;
+      if (ga > 0 && ga <= 6000000) sc += 15;
+      if (style === 'safe') sc += 10;
+      R.push({ id: 'payday', score: sc,
+        reason: ga > 0
+          ? `500k/tháng x 12 = 6 triệu. ${total90Enough(6000000, ga, glLabel)}`
+          : `Mỗi tháng trích 500k — cuối năm có 6 triệu cho ${glLabel || 'kế hoạch lớn'}!`
+      });
+    }
+
+    R.sort((a, b) => b.score - a.score);
+    setResult(R.slice(0, 3));
+    setStep(5);
+  };
+
+  function total90Enough(total: number, target: number, label: string) {
+    if (total >= target) return `Dư sức cho ${label} ${formatVND(target)}!`;
+    return `Được ${formatVND(total)}, cần thêm ${formatVND(target - total)} cho ${label}.`;
+  }
+
+  const goalOptions: { v: GoalType; label: string; desc: string; icon: string; color: string }[] = [
+    { v: 'travel', label: 'ĐI CHƠI / DU LỊCH', desc: 'Để dành đi trip, du lịch, phượt', icon: '/images/y2k-dragon.png', color: '#39ff14' },
+    { v: 'food', label: 'ĂN UỐNG / CAFE', desc: 'Gom tiền đi ăn xịn, cafe đẹp', icon: '/images/y2k-flame.png', color: '#ff8800' },
+    { v: 'shopping', label: 'MUA ĐỒ', desc: 'Quần áo, giày dép, phụ kiện, đồ tech', icon: '/images/y2k-star.png', color: '#ffd700' },
+    { v: 'tuition', label: 'ĐÓNG TIỀN HỌC', desc: 'Học phí, khóa học, luyện thi', icon: '/images/y2k-lightning.png', color: '#00d4ff' },
+    { v: 'debt', label: 'TRẢ NỢ', desc: 'Trả nợ bạn bè, thẻ tín dụng, vay', icon: '/images/y2k-skull.png', color: '#ff2020' },
+    { v: 'emergency', label: 'QUỸ DỰ PHÒNG', desc: 'Phòng khi ốm, xe hỏng, việc gấp', icon: '/images/y2k-skull.png', color: '#b8b8cc' },
+    { v: 'gift', label: 'MUA QUÀ TẶNG', desc: 'Sinh nhật, lễ tình nhân, quà cho gia đình', icon: '/images/y2k-trophy.png', color: '#e8a020' },
+    { v: 'invest', label: 'ĐẦU TƯ / GỬI TIẾT KIỆM', desc: 'Gửi ngân hàng, mua vàng, chứng khoán', icon: '/images/y2k-dragon.png', color: '#22cc88' },
+  ];
+
+  const c = '#00d4ff';
+  const questions = [
+    // Step 0: Thu nhập
+    <div key={0} className="animate-bounce-in">
+      <Ic src="/images/y2k-trophy.png" size={50} className="mx-auto mb-3 animate-float" tap />
+      <p className="glitch-text mb-3" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#ffd700', lineHeight: '2.2' }}>
+        THU NHẬP CỦA BRO?
+      </p>
+      <p className="mb-3" style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#999' }}>
+        Lương / thu nhập mỗi tháng (VNĐ)
+      </p>
+      <input type="text" value={income} onChange={e => { setIncome(e.target.value); playInputTick(); }}
+        placeholder="VD: 8000000" className="w-full text-center py-3 mb-2 text-xl"
+        style={{ fontSize: '22px', borderColor: `${c}88` }} />
+      {incomeNum > 0 && <p style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#ffd700' }}>= {formatVND(incomeNum)}/tháng</p>}
+    </div>,
+    // Step 1: Tiết kiệm
+    <div key={1} className="animate-bounce-in">
+      <Ic src="/images/y2k-star.png" size={50} className="mx-auto mb-3 animate-spin-slow" tap />
+      <p className="glitch-text mb-3" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#39ff14', lineHeight: '2.2' }}>
+        DƯ BAO NHIÊU ĐỂ TIẾT KIỆM?
+      </p>
+      <p className="mb-1" style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#999' }}>
+        Sau khi trừ chi phí, bro có thể bỏ heo bao nhiêu/tháng?
+      </p>
+      <p className="mb-3" style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#666' }}>
+        (ăn uống, xăng xe, điện nước... trừ hết rồi còn lại)
+      </p>
+      <input type="text" value={saving} onChange={e => { setSaving(e.target.value); playInputTick(); }}
+        placeholder="VD: 2000000" className="w-full text-center py-3 mb-2 text-xl"
+        style={{ fontSize: '22px', borderColor: '#39ff1488' }} />
+      {savingNum > 0 && (
+        <div style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#39ff14' }}>
+          = {formatVND(savingNum)}/tháng = ~{formatVND(savingPerDay)}/ngày
+        </div>
+      )}
+    </div>,
+    // Step 2: Mục đích tiết kiệm
+    <div key={2} className="animate-bounce-in">
+      <Ic src="/images/y2k-dragon.png" size={50} className="mx-auto mb-3 animate-float" tap />
+      <p className="glitch-text mb-3" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#22cc88', lineHeight: '2.2' }}>
+        TIẾT KIỆM ĐỂ LÀM GÌ?
+      </p>
+      <p className="mb-3" style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#999' }}>
+        Chọn dự định gần nhất của bro
+      </p>
+      <div className="grid grid-cols-2 gap-1.5 mb-3">
+        {goalOptions.map(opt => (
+          <button key={opt.v} onClick={() => { setGoal(opt.v); playClickByIndex(goalOptions.indexOf(opt)); }}
+            className="py-2 px-2 flex flex-col items-center gap-1 rounded-lg transition-all"
+            style={{
+              background: goal === opt.v ? `${opt.color}15` : '#0a0a18',
+              border: `2px ${goal === opt.v ? 'solid' : 'outset'} ${goal === opt.v ? opt.color : '#1a1a1a'}`,
+              boxShadow: goal === opt.v ? `0 0 12px ${opt.color}20` : 'none',
+            }}>
+            <Ic src={opt.icon} size={22} tap />
+            <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '6px', color: goal === opt.v ? opt.color : '#555', lineHeight: '1.8', textAlign: 'center' }}>{opt.label}</p>
+            <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#888', textAlign: 'center' }}>{opt.desc}</p>
+          </button>
+        ))}
+      </div>
+      {goal && (
+        <div className="mt-2">
+          <p className="mb-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#aaa' }}>
+            Bro cần bao nhiêu tiền cho việc này? (tùy chọn)
+          </p>
+          <input type="text" value={goalAmount} onChange={e => { setGoalAmount(e.target.value); playInputTick(); }}
+            placeholder="VD: 5000000 (bỏ trống nếu chưa biết)" className="w-full text-center py-2 mb-1"
+            style={{ fontSize: '18px', borderColor: goalOptions.find(o => o.v === goal)?.color + '88' }} />
+          {goalNum > 0 && savingPerDay > 0 && (
+            <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#ffd700' }}>
+              = {formatVND(goalNum)} — cần ~{Math.ceil(goalNum / savingPerDay)} ngày với mức tiết kiệm hiện tại
+            </p>
+          )}
+        </div>
+      )}
+    </div>,
+    // Step 3: Phong cách
+    <div key={2} className="animate-bounce-in">
+      <Ic src="/images/y2k-flame.png" size={50} className="mx-auto mb-3 animate-flame" tap />
+      <p className="glitch-text mb-4" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#ff5500', lineHeight: '2.2' }}>
+        PHONG CÁCH CỦA BRO?
+      </p>
+      <div className="space-y-2">
+        {([
+          { v: 'safe' as const, label: 'AN TOÀN', desc: 'Ít ít chắc chắn, không mạo hiểm', icon: '/images/y2k-skull.png', color: '#b8b8cc' },
+          { v: 'medium' as const, label: 'CÂN BẰNG', desc: 'Vừa phải, linh hoạt', icon: '/images/y2k-lightning.png', color: '#00d4ff' },
+          { v: 'yolo' as const, label: 'LIỀU MẠNG', desc: 'Bỏ nhiều, thách thức bản thân!', icon: '/images/y2k-flame.png', color: '#ff2020' },
+        ]).map(opt => (
+          <button key={opt.v} onClick={() => { setStyle(opt.v); playClickByIndex(opt.v === 'safe' ? 2 : opt.v === 'medium' ? 1 : 0); }}
+            className={`w-full py-3 px-4 flex items-center gap-3 text-left rounded-lg transition-all ${style === opt.v ? 'scale-[1.02]' : ''}`}
+            style={{
+              background: style === opt.v ? `linear-gradient(90deg, ${opt.color}22, ${opt.color}08)` : '#0a0a18',
+              border: `2px ${style === opt.v ? 'solid' : 'outset'} ${style === opt.v ? opt.color : '#222'}`,
+              boxShadow: style === opt.v ? `0 0 15px ${opt.color}20` : 'none',
+            }}>
+            <Ic src={opt.icon} size={28} tap />
+            <div>
+              <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: style === opt.v ? opt.color : '#666', lineHeight: '2' }}>{opt.label}</p>
+              <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#999' }}>{opt.desc}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>,
+    // Step 3: Thời gian
+    <div key={3} className="animate-bounce-in">
+      <Ic src="/images/y2k-dragon.png" size={50} className="mx-auto mb-3 animate-float" tap />
+      <p className="glitch-text mb-4" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#39ff14', lineHeight: '2.2' }}>
+        BRO MUỐN CHIẾN BAO LÂU?
+      </p>
+      <div className="space-y-2">
+        {([
+          { v: 'short' as const, label: 'NHANH GỌN', desc: '1-2 tuần, thử sức', icon: '/images/y2k-flame.png', color: '#ff4400' },
+          { v: 'medium' as const, label: 'VỪA PHẢI', desc: '1-3 tháng, xây thói quen', icon: '/images/y2k-lightning.png', color: '#00d4ff' },
+          { v: 'long' as const, label: 'DÀI HƠI', desc: '6 tháng - 1 năm, đại chiến!', icon: '/images/y2k-dragon.png', color: '#39ff14' },
+        ]).map(opt => (
+          <button key={opt.v} onClick={() => { setTime(opt.v); playClickByIndex(opt.v === 'short' ? 6 : opt.v === 'medium' ? 5 : 3); }}
+            className={`w-full py-3 px-4 flex items-center gap-3 text-left rounded-lg transition-all ${time === opt.v ? 'scale-[1.02]' : ''}`}
+            style={{
+              background: time === opt.v ? `linear-gradient(90deg, ${opt.color}22, ${opt.color}08)` : '#0a0a18',
+              border: `2px ${time === opt.v ? 'solid' : 'outset'} ${time === opt.v ? opt.color : '#222'}`,
+              boxShadow: time === opt.v ? `0 0 15px ${opt.color}20` : 'none',
+            }}>
+            <Ic src={opt.icon} size={28} tap />
+            <div>
+              <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: time === opt.v ? opt.color : '#666', lineHeight: '2' }}>{opt.label}</p>
+              <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#999' }}>{opt.desc}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>,
+  ];
+
+  return (
+    <div className="min-h-screen min-h-[100dvh] grid-pattern relative scanlines">
+      <FloatingIcons />
+      <div className="relative z-10 p-2 sm:p-4 max-w-lg mx-auto">
+        <button onClick={() => { playBack(); step > 0 && step < 5 ? setStep(step - 1) : onBack(); }} className="btn-3d px-3 py-1 mb-3 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+          <Ic src="/images/y2k-flame.png" size={12} tap /> {'<<<'} {step > 0 && step < 5 ? 'QUAY LẠI' : 'VỀ TRANG CHỦ'}
+        </button>
+
+        <div className="retro-panel p-4 sm:p-5 vhs-jitter">
+          {/* Step indicator */}
+          {step < 5 && (
+            <div className="flex justify-center gap-2 mb-4">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className="rounded-full transition-all" style={{
+                  width: i === step ? 14 : 8, height: i === step ? 14 : 8,
+                  background: i < step ? '#39ff14' : i === step ? '#00d4ff' : '#222',
+                  boxShadow: i === step ? '0 0 8px #00d4ff' : i < step ? '0 0 6px #39ff14' : 'none',
+                }} />
+              ))}
+            </div>
+          )}
+
+          {/* Questions */}
+          {step < 5 && questions[step]}
+
+          {/* Results */}
+          {step === 5 && (
+            <div className="animate-bounce-in">
+              <Ic src="/images/y2k-trophy.png" size={50} className="mx-auto mb-3" tap />
+              <p className="glitch-text text-center mb-1" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#ffd700', lineHeight: '2.2' }}>
+                GỢI Ý CHO BRO
+              </p>
+              <p className="text-center mb-2" style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#888' }}>
+                Thu nhập {formatVND(incomeNum)}, dư {formatVND(savingNum)}/tháng
+              </p>
+              {goal && (
+                <p className="text-center mb-4" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: goalOptions.find(o => o.v === goal)?.color || '#888' }}>
+                  Mục đích: {goalLabels[goal]}{goalNum > 0 ? ` — cần ${formatVND(goalNum)}` : ''}
+                </p>
+              )}
+
+              <div className="space-y-3">
+                {result.map((r, ri) => {
+                  const tm = getTemplate(r.id);
+                  if (!tm) return null;
+                  const f = icFilter(tm.id);
+                  const medals = ['', '', ''];
+                  const labels = ['PHÙ HỢP NHẤT', 'CŨNG HAY', 'THỬ ĐƯỢC'];
+                  return (
+                    <div key={r.id} className={`p-3 relative overflow-hidden ${ri === 0 ? 'animate-pulse-glow' : ''}`}
+                      style={{
+                        background: `linear-gradient(135deg, ${tm.colorDark}, #040408)`,
+                        border: `${ri === 0 ? 3 : 2}px outset ${tm.color}`,
+                        borderRadius: ri === 0 ? '16px' : '8px',
+                        boxShadow: ri === 0 ? `0 0 20px ${tm.color}20` : 'none',
+                      }}>
+                      <div className="absolute -right-3 -top-3 opacity-[0.05]"><Ic src={tm.icon} size={60} filter={f} /></div>
+                      {/* Medal */}
+                      <div className="flex items-center gap-1 mb-2 relative z-10">
+                        <span style={{ fontFamily: "'VT323', monospace", fontSize: ri === 0 ? '20px' : '16px', color: ri === 0 ? '#ffd700' : ri === 1 ? '#c0c0c0' : '#cd7f32' }}>
+                          {medals[ri]} #{ri + 1}
+                        </span>
+                        <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: tm.color, lineHeight: '2' }}>
+                          {labels[ri]}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2 relative z-10">
+                        <Ic src={tm.icon} size={30} filter={f} className="animate-float" tap />
+                        <div>
+                          <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: tm.color, lineHeight: '2' }}>{tm.name}</p>
+                          <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#aaa' }}>{r.reason}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => { playClickByIndex(ri); onPick(r.id); }}
+                        className="w-full py-2 flex items-center justify-center gap-2 rounded-lg relative z-10"
+                        style={{
+                          fontFamily: "'VT323', monospace", fontSize: '17px', color: '#fff', cursor: 'pointer',
+                          background: `linear-gradient(180deg, ${tm.color}aa, ${tm.color}44)`,
+                          border: `2px outset ${tm.color}`,
+                        }}>
+                        <Ic src={tm.icon} size={14} filter={f} tap /> CHỌN NÀY <Ic src={tm.icon} size={14} filter={f} tap />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button onClick={() => { setStep(0); setResult([]); }} className="btn-3d w-full mt-3 py-2" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+                <Ic src="/images/y2k-star.png" size={12} tap /> LÀM LẠI KHẢO SÁT
+              </button>
+            </div>
+          )}
+
+          {/* Next button */}
+          {step < 5 && (
+            <button onClick={() => {
+              if (step === 0 && incomeNum <= 0) return;
+              if (step === 1 && savingNum <= 0) return;
+              if (step === 2 && !goal) return;
+              if (step === 3 && !style) return;
+              if (step === 4) { if (!time) return; calculate(); return; }
+              playNavigate();
+              setStep(step + 1);
+            }}
+              className={`w-full mt-4 py-2.5 flex items-center justify-center gap-2 rounded-lg ${
+                (step === 0 && incomeNum <= 0) || (step === 1 && savingNum <= 0) || (step === 2 && !goal) || (step === 3 && !style) || (step === 4 && !time)
+                  ? 'opacity-30' : ''
+              }`}
+              style={{
+                fontFamily: "'VT323', monospace", fontSize: '20px', color: '#fff', cursor: 'pointer',
+                background: `linear-gradient(180deg, ${c}cc, ${c}55)`,
+                border: `3px outset ${c}`, boxShadow: `0 0 12px ${c}30`,
+              }}>
+              <Ic src="/images/y2k-lightning.png" size={16} tap /> {step === 4 ? 'XEM GỢI Ý' : 'TIẾP THEO'} <Ic src="/images/y2k-lightning.png" size={16} tap />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== MAIN APP =====
-type Screen = 'home' | 'setup' | 'progress';
+type Screen = 'home' | 'setup' | 'progress' | 'suggest';
 
 export default function App() {
   const [data, setData] = useState<AppData>(loadData);
@@ -632,13 +1073,14 @@ export default function App() {
 
   // Go to setup
   const openSetup = (tid: string) => {
-    // If already has this challenge, go straight to progress
     const existing = data.challenges.find(c => c.id === tid);
-    if (existing) {
+    if (existing && !existing.isCompleted) {
+      // Active but not completed — go to progress
       save({ ...data, activeChallengeId: tid });
       setScreen('progress');
       return;
     }
+    // Completed or new — go to setup (streak/cups sẽ được giữ trong startChallenge)
     setSetupId(tid);
     setScreen('setup');
   };
@@ -647,13 +1089,19 @@ export default function App() {
   const startChallenge = (tid: string, days: number, fixedAmt: number) => {
     const t = getTemplate(tid); if (!t) return;
     const da = Array.from({ length: days }, (_, i) => t.canEditAmount ? fixedAmt : t.getDayAmount(i + 1, days));
+    // Lấy streak + cups từ data cũ (nếu chiến lại)
+    const old = data.challenges.find(c => c.id === tid);
     const nc: ChallengeData = {
       id: tid, name: t.name, type: t.type, totalDays: days,
       completedDays: new Array(days).fill(false), totalTarget: da.reduce((s, a) => s + a, 0),
       startDate: new Date().toISOString(), isActive: true, isCompleted: false,
+      streak: old?.streak ?? 0,
+      totalCups: old?.totalCups ?? 0,
     };
     setFixedAmts({ ...fixedAmts, [tid]: fixedAmt });
-    save({ ...data, challenges: [...data.challenges, nc], activeChallengeId: tid });
+    // Xóa bản cũ (nếu có) rồi thêm bản mới
+    const filtered = data.challenges.filter(c => c.id !== tid);
+    save({ ...data, challenges: [...filtered, nc], activeChallengeId: tid });
     setScreen('progress');
     playNavigate();
   };
@@ -674,10 +1122,32 @@ export default function App() {
     setScreen('home');
   };
 
+  // Hoàn thành thử thách — tăng streak + cup, giữ data, cho chọn mới
+  const completeChallenge = () => {
+    if (!data.activeChallengeId) return;
+    save({
+      ...data,
+      challenges: data.challenges.map(c =>
+        c.id === data.activeChallengeId ? {
+          ...c,
+          isCompleted: true,
+          isActive: false,
+          streak: (c.streak ?? 0) + 1,
+          totalCups: (c.totalCups ?? 0) + 1,
+        } : c
+      ),
+      activeChallengeId: null,
+    });
+    setScreen('home');
+  };
+
   const goHome = () => { setScreen('home'); };
 
   // ===== LOADING SCREEN =====
   if (loading) return <LoadingScreen onDone={() => { setLoading(false); unlockAudio(); }} />;
+
+  // ===== SUGGEST SCREEN =====
+  if (screen === 'suggest') return <SuggestScreen onPick={(id) => { openSetup(id); }} onBack={goHome} />;
 
   // ===== SETUP SCREEN =====
   if (screen === 'setup' && setupId) {
@@ -691,7 +1161,7 @@ export default function App() {
       <ChallengeProgress
         challenge={activeChallenge} template={activeTemplate}
         fixedAmt={fixedAmts[activeChallenge.id] || (activeTemplate.type === 'monthly' ? 500000 : 20000)}
-        onToggleDay={toggle} onBack={goHome} onQuit={quitChallenge} userName={data.userName}
+        onToggleDay={toggle} onBack={goHome} onQuit={quitChallenge} onComplete={completeChallenge} userName={data.userName}
       />
     );
   }
@@ -738,12 +1208,30 @@ export default function App() {
             </div>
             <div className="flex flex-col items-center gap-0.5">
               <Ic src="/images/y2k-trophy.png" size={28} glitch tap />
-              <span style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#39ff14', textShadow: '0 0 6px rgba(57,255,20,0.4)' }}>
-                {data.challenges.filter(c => c.isCompleted).length} GG
+              <span style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#ffd700', textShadow: '0 0 6px rgba(255,215,0,0.4)' }}>
+                {data.challenges.reduce((s, c) => s + (c.totalCups ?? 0), 0)}
               </span>
+              <span style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#888' }}>cup</span>
             </div>
           </div>
         </div>
+
+        {/* SUGGEST BUTTON */}
+        {!hasActive && (
+          <button onClick={() => { playNavigate(); setScreen('suggest'); }}
+            className="w-full mb-4 py-3 flex items-center justify-center gap-3 rounded-[16px] y2k-card cursor-pointer"
+            style={{
+              background: 'linear-gradient(135deg, #0a0818, #040408, #08001a)',
+              border: '3px outset #aa44ff',
+              boxShadow: 'inset 0 0 30px rgba(170,68,255,0.05), 4px 4px 0 #030306, 0 0 20px rgba(170,68,255,0.1)',
+              fontFamily: "'VT323', monospace", fontSize: '20px', color: '#aa44ff',
+              textShadow: '0 0 8px rgba(170,68,255,0.5)',
+            }}>
+            <Ic src="/images/y2k-star.png" size={20} className="animate-spin-slow" tap />
+            KHÔNG BIẾT CHỌN GÌ? ĐỂ TAO GỢI Ý
+            <Ic src="/images/y2k-lightning.png" size={20} className="animate-float" tap />
+          </button>
+        )}
 
         {/* ACTIVE CHALLENGE BANNER */}
         {hasActive && activeChallenge && activeTemplate && (
@@ -794,7 +1282,9 @@ export default function App() {
           <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2">
             {CHALLENGES.map((tm, idx) => {
               const isActive = data.activeChallengeId === tm.id;
-              const dis = hasActive && !isActive;
+              const completedData = data.challenges.find(c => c.id === tm.id && c.isCompleted);
+              const isCompleted = !!completedData;
+              const dis = hasActive && !isActive && !isCompleted;
               const f = icFilter(tm.id);
               const c = tm.color;
               const cd = tm.colorDark;
@@ -819,6 +1309,20 @@ export default function App() {
                 </button>
               ) : dis ? (
                 <div className={`w-full py-1.5 text-center ${radius}`} style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#222', border: '1px dashed #1a1a1a' }}>Hoàn thành thử thách hiện tại trước</div>
+              ) : isCompleted ? (
+                <div className="space-y-1.5">
+                  <div className={`w-full py-2 flex items-center justify-center gap-2 ${radius}`} style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#ffd700', border: `2px solid #ffd70044`, background: 'rgba(255,215,0,0.05)' }}>
+                    <Ic src="/images/y2k-trophy.png" size={14} tap />
+                    <span>{completedData!.totalCups}x</span>
+                    <span style={{ color: '#aaa' }}>|</span>
+                    <span style={{ color: '#ff8800' }}>streak {completedData!.streak}</span>
+                    <Ic src="/images/y2k-flame.png" size={12} tap />
+                  </div>
+                  <button onClick={(e) => { playClickByIndex(idx); spawn(e, efx, c, tm.icon, f); openSetup(tm.id); }} className={`w-full py-2 flex items-center justify-center gap-2 ${radius}`}
+                    style={{ fontFamily: "'VT323', monospace", fontSize: '17px', color: '#fff', cursor: 'pointer', background: `linear-gradient(180deg, ${c}88, ${c}44)`, border: `2px outset ${c}`, boxShadow: `0 0 10px ${c}20` }}>
+                    <Ic src={tm.icon} size={14} filter={f} tap /> CHIẾN LẠI <Ic src={tm.icon} size={14} filter={f} tap />
+                  </button>
+                </div>
               ) : (
                 <button onClick={(e) => { playClickByIndex(idx); spawn(e, efx, c, tm.icon, f); openSetup(tm.id); }} className={`w-full py-2.5 flex items-center justify-center gap-2 ${radius}`}
                   style={{ fontFamily: "'VT323', monospace", fontSize: '19px', color: '#fff', cursor: 'pointer', background: `linear-gradient(180deg, ${c}cc, ${c}55)`, border: `3px outset ${c}`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.3), 3px 3px 0 #080808, 0 0 15px ${c}30`, textShadow: `0 0 8px ${c}aa, 1px 1px 2px #000` }}>

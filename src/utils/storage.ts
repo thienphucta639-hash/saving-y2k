@@ -8,6 +8,8 @@ export interface ChallengeData {
   startDate: string;
   isActive: boolean;
   isCompleted: boolean;
+  streak: number;        // số lần hoàn thành liên tiếp
+  totalCups: number;     // tổng cup tích lũy
 }
 
 export interface AppData {
@@ -22,7 +24,14 @@ export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const d = JSON.parse(raw) as AppData;
+      // Migration: thêm streak/totalCups cho data cũ
+      d.challenges = d.challenges.map(c => ({
+        ...c,
+        streak: c.streak ?? 0,
+        totalCups: c.totalCups ?? (c.isCompleted ? 1 : 0),
+      }));
+      return d;
     }
   } catch (e) {
     console.error('Failed to load data', e);

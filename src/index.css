@@ -74,28 +74,44 @@ body {
   100% { transform: translate(0, 0) rotate(0deg); }
 }
 
+/* ===== CHAOTIC BUT SCIENTIFIC CARDS ===== */
 .y2k-card {
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
 }
-.y2k-card::before {
-  content: '';
-  position: absolute; inset: -2px;
-  background: linear-gradient(45deg, transparent 40%, rgba(0,212,255,0.08) 50%, transparent 60%);
-  background-size: 200% 200%;
-  z-index: 0;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-.y2k-card:hover::before { opacity: 1; background-position: 100% 100%; }
 .y2k-card:hover {
-  transform: translate(-1px, -2px);
-  box-shadow: 
-    inset 0 0 30px rgba(0,212,255,0.08),
-    6px 6px 0 #050508,
-    0 0 25px rgba(0,100,255,0.15);
-  animation: hover-shake 0.3s ease;
+  animation: hover-shake 0.25s ease;
 }
+
+/* Each card tilts differently on hover */
+.tilt-1:hover { transform: rotate(-1.5deg) scale(1.03) translateY(-4px); }
+.tilt-2:hover { transform: rotate(1.2deg) scale(1.02) translateX(3px); }
+.tilt-3:hover { transform: rotate(0.8deg) scale(1.04) translateY(-5px); }
+.tilt-4:hover { transform: rotate(-2deg) scale(1.02) translateX(-3px); }
+.tilt-5:hover { transform: rotate(1.5deg) scale(1.03) translateY(-3px); }
+.tilt-6:hover { transform: rotate(-0.5deg) scale(1.01) translate(-2px, -2px); }
+.tilt-7:hover { transform: rotate(2deg) scale(1.04) translateY(-6px); }
+.tilt-8:hover { transform: rotate(-1deg) scale(1.03) translate(2px, -4px); }
+
+/* Stagger entrance animation */
+@keyframes card-enter {
+  0% { opacity: 0; transform: translateY(30px) scale(0.9) rotate(-3deg); }
+  60% { opacity: 1; transform: translateY(-5px) scale(1.02) rotate(0.5deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+}
+.card-enter { animation: card-enter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards; }
+
+/* Unique idle animations per card */
+@keyframes idle-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.005); } }
+@keyframes idle-sway { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(0.3deg); } }
+@keyframes idle-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1px); } }
+@keyframes idle-pulse { 0%, 100% { box-shadow: 0 0 15px var(--glow-c, transparent); } 50% { box-shadow: 0 0 25px var(--glow-c, transparent); } }
+
+.idle-breathe { animation: idle-breathe 4s ease-in-out infinite; }
+.idle-sway { animation: idle-sway 5s ease-in-out infinite; }
+.idle-drift { animation: idle-drift 6s ease-in-out infinite; }
+
+.shape-pill { border-radius: 30px; }
 
 /* ===== CHROME TEXT ===== */
 .chrome-text {
@@ -290,4 +306,57 @@ input:focus { outline: none; border-color: #00d4ff; box-shadow: 0 0 12px rgba(0,
 
 @supports (padding: max(0px)) {
   body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* ===== 8 CLICK EFFECT ANIMATIONS ===== */
+
+/* 0: Lửa phun */
+@keyframes fx-fire {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, -40px)) scale(0.3); }
+}
+
+/* 1: Sấm sét chớp */
+@keyframes fx-bolt {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)) scale(1.5); }
+}
+
+/* 2: Sóng tròn */
+@keyframes fx-ripple {
+  0% { width: 0; height: 0; opacity: 0.8; }
+  100% { width: 120px; height: 120px; opacity: 0; border-width: 1px; }
+}
+
+/* 3: Pixel vỡ */
+@keyframes fx-pixel {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)) rotate(var(--rot, 360deg)) scale(0.2); }
+}
+
+/* 4: Tia sáng */
+@keyframes fx-ray {
+  0% { opacity: 0.9; transform: rotate(var(--angle, 0)) scaleY(0); }
+  30% { opacity: 0.9; transform: rotate(var(--angle, 0)) scaleY(1); }
+  100% { opacity: 0; transform: rotate(var(--angle, 0)) scaleY(1.5); }
+}
+
+/* 5: Ngôi sao xoay */
+@keyframes fx-star {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)) rotate(540deg) scale(0.3); }
+}
+
+/* 6: Khói mờ */
+@keyframes fx-smoke {
+  0% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--tx, 0)), calc(-50% + var(--ty, -20px))) scale(4); }
+}
+
+/* 7: Rồng cong */
+@keyframes fx-dragon {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  50% { opacity: 0.8; transform: translate(var(--mid, 20px), calc(var(--ty, 0) * 0.4)) scale(1.5); }
+  100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)) scale(0.5); }
 }

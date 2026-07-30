@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { loadData, saveData, AppData, ChallengeData } from './utils/storage';
+import { loadData, saveData, AppData, ChallengeData, PiggyEntry } from './utils/storage';
 import { playY2KSuccess, playY2KWin, unlockAudio, playClickByIndex, playNavigate, playBack, playQuitWarn, playStay, playUntoggle, playInputTick, tapIconByName, tapTitle, tapSubtitle, tapUser, tapFooterIcon, tapSparkle } from './utils/sounds';
 import { useClickEffect, ClickParticles, EffectType } from './components/ClickEffects';
+import BudgetPlanner from './components/BudgetPlanner';
 
 interface ChallengeTemplate {
   id: string; name: string; desc: string; icon: string; type: string;
@@ -36,7 +37,46 @@ const ICON_FILTERS: Record<string, string> = {
 };
 
 const formatVND = (n: number) => n.toLocaleString('vi-VN') + 'đ';
+const fmt = formatVND;
+const _pad2 = (n: number) => String(n).padStart(2, '0');
+const fmtDate = (iso: string) => { if (!iso) return ''; const d = new Date(iso); return `${_pad2(d.getDate())}/${_pad2(d.getMonth()+1)}/${d.getFullYear()} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`; };
 const getTemplate = (id: string) => CHALLENGES.find(c => c.id === id);
+
+// ===== SVG CON HEO Y2K =====
+function PiggySvg({ size = 50 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className="y2k-icon inline-block">
+      <defs>
+        <radialGradient id="pg" cx="40%" cy="35%" r="55%">
+          <stop offset="0%" stopColor="#ffcc88" />
+          <stop offset="40%" stopColor="#cc8844" />
+          <stop offset="100%" stopColor="#885522" />
+        </radialGradient>
+        <filter id="pgGlow"><feGaussianBlur stdDeviation="1.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      {/* Body */}
+      <ellipse cx="32" cy="34" rx="22" ry="18" fill="url(#pg)" stroke="#aa6633" strokeWidth="2" filter="url(#pgGlow)" />
+      {/* Snout */}
+      <ellipse cx="50" cy="32" rx="7" ry="5" fill="#ddaa77" stroke="#aa6633" strokeWidth="1.5" />
+      <circle cx="49" cy="31" r="1.5" fill="#885522" /><circle cx="52" cy="31" r="1.5" fill="#885522" />
+      {/* Eye */}
+      <circle cx="42" cy="26" r="3" fill="#222" /><circle cx="43" cy="25" r="1" fill="#fff" />
+      {/* Ears */}
+      <ellipse cx="26" cy="18" rx="6" ry="8" fill="#cc8844" stroke="#aa6633" strokeWidth="1.5" transform="rotate(-15 26 18)" />
+      <ellipse cx="38" cy="16" rx="5" ry="7" fill="#cc8844" stroke="#aa6633" strokeWidth="1.5" transform="rotate(10 38 16)" />
+      {/* Legs */}
+      <rect x="18" y="46" width="6" height="8" rx="2" fill="#cc8844" stroke="#aa6633" strokeWidth="1" />
+      <rect x="28" y="47" width="6" height="7" rx="2" fill="#cc8844" stroke="#aa6633" strokeWidth="1" />
+      <rect x="36" y="46" width="6" height="8" rx="2" fill="#cc8844" stroke="#aa6633" strokeWidth="1" />
+      {/* Coin slot */}
+      <rect x="28" y="19" width="10" height="3" rx="1.5" fill="#553311" stroke="#442200" strokeWidth="0.5" />
+      {/* Tail curl */}
+      <path d="M10 30 Q6 28 7 24 Q8 20 12 22" fill="none" stroke="#cc8844" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Highlight */}
+      <ellipse cx="28" cy="28" rx="6" ry="4" fill="rgba(255,255,255,0.15)" />
+    </svg>
+  );
+}
 
 // ===== Y2K ICON — click phát tiếng =====
 function Ic({ src, size = 40, className = '', glitch = false, filter, tap = false }: { src: string; size?: number; className?: string; glitch?: boolean; filter?: string; tap?: boolean }) {
@@ -214,9 +254,9 @@ function WinScreen({ challenge, userName, total, onClose }: { challenge: Challen
 }
 
 // ===== SETUP SCREEN — mỗi challenge setup khác biệt =====
-function SetupScreen({ template, onStart, onBack }: { template: ChallengeTemplate; onStart: (days: number, fixedAmount: number) => void; onBack: () => void }) {
-  const [days, setDays] = useState(template.defaultDays);
-  const [fixedAmt, setFixedAmt] = useState(template.type === 'monthly' ? 500000 : 20000);
+function SetupScreen({ template, onStart, onBack, initDays, initAmount }: { template: ChallengeTemplate; onStart: (days: number, fixedAmount: number) => void; onBack: () => void; initDays?: number; initAmount?: number }) {
+  const [days, setDays] = useState(initDays || template.defaultDays);
+  const [fixedAmt, setFixedAmt] = useState(initAmount || (template.type === 'monthly' ? 500000 : 20000));
   const lbl = template.type === 'weekly' ? 'tuần' : template.type === 'monthly' ? 'tháng' : 'ngày';
   const idx = CHALLENGES.findIndex(c => c.id === template.id);
   const f = icFilter(template.id);
@@ -630,7 +670,9 @@ function LoadingScreen({ onDone }: { onDone: () => void }) {
 // ===== SUGGEST — Gợi ý thử thách dựa trên thực tế =====
 type GoalType = 'travel'|'food'|'shopping'|'tuition'|'debt'|'emergency'|'gift'|'invest'|'';
 
-function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBack: () => void }) {
+interface SuggestResult { id: string; reason: string; days: number; amount: number; total: number }
+
+function SuggestScreen({ onPick, onBack }: { onPick: (id: string, days: number, amount: number) => void; onBack: () => void }) {
   const [step, setStep] = useState(0);
   const [income, setIncome] = useState('');
   const [saving, setSaving] = useState('');
@@ -638,7 +680,7 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBac
   const [goalAmount, setGoalAmount] = useState('');
   const [style, setStyle] = useState<'safe'|'medium'|'yolo'|''>('');
   const [time, setTime] = useState<'short'|'medium'|'long'|''>('');
-  const [result, setResult] = useState<{ id: string; reason: string }[]>([]);
+  const [result, setResult] = useState<SuggestResult[]>([]);
 
   const incomeNum = parseInt(income.replace(/\D/g, '')) || 0;
   const savingNum = parseInt(saving.replace(/\D/g, '')) || 0;
@@ -652,130 +694,152 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBac
   };
 
   const calculate = () => {
-    const R: { id: string; reason: string; score: number }[] = [];
-    const db = savingPerDay;
+    const R: (SuggestResult & { score: number })[] = [];
+    const db = savingPerDay; // budget /ngày
     const gl = goal;
-    const ga = goalNum;
-    const glLabel = goalLabels[gl] || '';
-
-    // Tính số ngày cần nếu có goal amount
+    const ga = goalNum; // số tiền mục tiêu
+    const glLabel = goalLabels[gl] || 'tiết kiệm';
     const daysToGoal = ga > 0 && db > 0 ? Math.ceil(ga / db) : 0;
     const needShort = daysToGoal > 0 && daysToGoal <= 30;
 
-    // ===== Gợi ý dựa trên MỤC ĐÍCH + TÀI CHÍNH + PHONG CÁCH =====
+    // Helper: tính số ngày + số tiền/ngày thực tế cho fixed challenge
+    const fixedCalc = (defaultDays: number) => {
+      if (ga > 0 && db > 0) {
+        // Số ngày = ga / db, round lên, clamp trong khoảng hợp lý
+        const d = Math.max(7, Math.min(365, Math.ceil(ga / db)));
+        const amt = Math.ceil(ga / d / 1000) * 1000; // round lên 1000
+        return { days: d, amount: amt, total: amt * d };
+      }
+      // Không có goal → dùng saving/day
+      const amt = Math.max(1000, Math.round(db / 1000) * 1000);
+      return { days: defaultDays, amount: amt, total: amt * defaultDays };
+    };
 
-    // 90 NGÀY KỶ LUẬT — trả nợ, tiền học, dự phòng, đầu tư (cần ổn định)
+    // Helper: tính cho incremental challenge (ngày n = n * step)
+    const incrCalc = (step: number, defaultDays: number) => {
+      if (ga > 0) {
+        // Tìm số ngày n sao cho sum(1..n)*step >= ga
+        // sum = n*(n+1)/2 * step >= ga → n ~ sqrt(2*ga/step)
+        let n = Math.ceil(Math.sqrt(2 * ga / step));
+        while (n * (n + 1) / 2 * step < ga) n++;
+        n = Math.max(7, Math.min(365, n));
+        return { days: n, amount: step, total: n * (n + 1) / 2 * step };
+      }
+      return { days: defaultDays, amount: step, total: defaultDays * (defaultDays + 1) / 2 * step };
+    };
+
+    // ===== 90 NGÀY KỶ LUẬT (fixed) =====
     if (savingNum >= 100000) {
-      const daily = Math.min(Math.round(db / 1000) * 1000, 50000) || 20000;
+      const fc = fixedCalc(90);
       let sc = 50;
-      if (gl === 'debt' || gl === 'tuition') sc += 30; // nợ/học cần đều đặn
+      if (gl === 'debt' || gl === 'tuition') sc += 30;
       if (gl === 'emergency' || gl === 'invest') sc += 25;
       if (style === 'safe') sc += 15;
       if (time === 'medium' || time === 'long') sc += 10;
-      if (ga > 0) {
-        const total90 = daily * 90;
-        if (total90 >= ga * 0.8) sc += 15;
-      }
-      R.push({ id: 'fixed90', score: sc,
-        reason: ga > 0
-          ? `Bỏ đều ${formatVND(daily)}/ngày x 90 ngày = ${formatVND(daily * 90)}. ${total90Enough(daily * 90, ga, glLabel)}`
-          : `Bỏ đều ${formatVND(daily)}/ngày — kỷ luật là vũ khí tốt nhất để ${glLabel || 'tiết kiệm'}!`
+      if (ga > 0 && fc.total >= ga * 0.8) sc += 15;
+      R.push({ id: 'fixed90', score: sc, days: fc.days, amount: fc.amount, total: fc.total,
+        reason: `Bỏ đều ${formatVND(fc.amount)}/ngày x ${fc.days} ngày = ${formatVND(fc.total)}. ${ga > 0 ? enough(fc.total, ga, glLabel) : `Kỷ luật để ${glLabel}!`}`
       });
     }
 
-    // 52 TUẦN THÉP — dài hơi, phù hợp du lịch lớn, đầu tư, tiền học
+    // ===== 52 TUẦN THÉP (weekly incremental) =====
     if (savingNum >= 200000) {
+      const wc = incrCalc(10000, 52);
       let sc = 45;
       if (gl === 'travel' || gl === 'invest' || gl === 'tuition') sc += 25;
       if (time === 'long') sc += 20;
       if (style === 'safe') sc += 10;
-      if (ga > 0 && ga <= 15000000) sc += 10;
-      R.push({ id: '52week', score: sc,
-        reason: ga > 0
-          ? `52 tuần tăng dần, tổng ~13.7 triệu. ${total90Enough(13780000, ga, glLabel)}`
-          : `Mỗi tuần thêm 10k — nhẹ nhàng mà 1 năm gom đc 13.7 triệuu cho ${glLabel || 'mục tiêu dài hạn'}!`
+      if (ga > 0 && wc.total >= ga) sc += 10;
+      R.push({ id: '52week', score: sc, days: wc.days, amount: 10000, total: wc.total,
+        reason: `${wc.days} tuần tăng dần, tổng ${formatVND(wc.total)}. ${ga > 0 ? enough(wc.total, ga, glLabel) : `Gom đều cho ${glLabel}!`}`
       });
     }
 
-    // 365 NGÀY CHINH PHỤC — mục tiêu to, đầu tư, tiền học lớn
+    // ===== 365 NGÀY CHINH PHỤC (daily incremental) =====
     if (db >= 5000 && time !== 'short') {
+      const dc = incrCalc(1000, 365);
       let sc = 35;
       if (gl === 'invest' || gl === 'tuition') sc += 25;
       if (ga > 0 && ga >= 10000000) sc += 20;
       if (time === 'long') sc += 15;
-      R.push({ id: '365day', score: sc,
-        reason: `Tăng dần mỗi ngày, cuối năm = ~66 triệu! ${ga > 0 ? `Dư sức cho ${glLabel} ${formatVND(ga)}.` : `Chinh phục mục tiêu to nhấtt!`}`
+      R.push({ id: '365day', score: sc, days: dc.days, amount: 1000, total: dc.total,
+        reason: `${dc.days} ngày tăng dần, tổng ${formatVND(dc.total)}! ${ga > 0 ? enough(dc.total, ga, glLabel) : `Chinh phục mục tiêu to!`}`
       });
     }
 
-    // 30 NGÀY ĐẾM NGƯỢC — mua quà, ăn uống, shopping (cần nhanh)
+    // ===== 30 NGÀY ĐẾM NGƯỢC =====
     if (db >= 1000) {
+      // Countdown: ngày 1 = days*1000, ngày cuối = 1000. Tổng = days*(days+1)/2 * 1000
+      const cd = ga > 0 ? Math.max(7, Math.min(60, Math.ceil(Math.sqrt(2 * ga / 1000)))) : 30;
+      const cTotal = cd * (cd + 1) / 2 * 1000;
       let sc = 45;
       if (gl === 'gift' || gl === 'food' || gl === 'shopping') sc += 25;
       if (needShort) sc += 20;
       if (time === 'short' || time === 'medium') sc += 10;
       if (style === 'yolo') sc += 10;
-      R.push({ id: 'countdown30', score: sc,
-        reason: ga > 0
-          ? `30 ngày, tổng ~465k. ${needShort ? `Vừa đủ thời gian cho ${glLabel}!` : `Bước đệm nhẹ trước khi ${glLabel}.`}`
-          : `Bắt đầu mạnh, cuối nhẹ — phù hợp để dành ${glLabel || 'chi tiêu ngắn hạn'}!`
+      R.push({ id: 'countdown30', score: sc, days: cd, amount: 1000, total: cTotal,
+        reason: `${cd} ngày đếm ngược, tổng ${formatVND(cTotal)}. ${ga > 0 ? enough(cTotal, ga, glLabel) : `Nhanh gọn cho ${glLabel}!`}`
       });
     }
 
-    // 14 NGÀY NHÂN ĐÔI — shopping, quà tặng (ngắn + liều)
+    // ===== 14 NGÀY NHÂN ĐÔI =====
     if (db >= 5000 && style !== 'safe') {
+      // Nhân đôi: tổng = (2^days - 1) * 1000
+      const dd = ga > 0 ? Math.max(7, Math.min(20, Math.ceil(Math.log2(ga / 1000 + 1)))) : 14;
+      const dTotal = (Math.pow(2, dd) - 1) * 1000;
       let sc = 40;
       if (gl === 'shopping' || gl === 'gift') sc += 20;
       if (needShort) sc += 15;
       if (style === 'yolo') sc += 25;
-      if (time === 'short') sc += 10;
-      R.push({ id: 'double14', score: sc,
-        reason: `2 tuần, tổng ~16 triệu nếu chiến hết! ${gl === 'shopping' ? 'Đủ mua đồ xịnn!' : gl === 'gift' ? 'Quà xịn cho ngừi đặc biệtt!' : 'Thách thức bản thân cấp số nhânn!'}`
+      R.push({ id: 'double14', score: sc, days: dd, amount: 1000, total: dTotal,
+        reason: `${dd} ngày nhân đôi, tổng ${formatVND(dTotal)}! ${gl === 'shopping' ? 'Mua đồ xịnn!' : 'Thách thức cấp số nhânn!'}`
       });
     }
 
-    // 30 NGÀY MAY RỦI — ăn uống, cafe, vui vẻ
+    // ===== 30 NGÀY MAY RỦI =====
     {
+      const rd = ga > 0 && db > 0 ? Math.max(7, Math.min(60, Math.ceil(ga / 18000))) : 30; // avg ~18k/spin
+      const rTotal = rd * 18000;
       let sc = 40;
       if (gl === 'food' || gl === 'travel') sc += 20;
       if (style === 'medium') sc += 15;
-      if (time === 'short') sc += 10;
-      R.push({ id: 'random30', score: sc,
-        reason: `Quay vòng xoay mỗi ngày — vui, bất ngờ! ${gl === 'food' ? 'Gom đc bao nhiêu thì ăn bấy nhiêuu!' : `Không áp lực, tiết kiệm cho ${glLabel || 'bản thân'}!`}`
+      R.push({ id: 'random30', score: sc, days: rd, amount: 18000, total: rTotal,
+        reason: `${rd} ngày quay may mắn, trung bình ~${formatVND(rTotal)}. Vui, không áp lực!`
       });
     }
 
-    // 7 NGÀY BÃO TỐ — test ý chí, quà nhanh, ăn chơi cuối tuần
+    // ===== 7 NGÀY BÃO TỐ =====
     {
       let sc = 35;
       if (gl === 'gift' || gl === 'food') sc += 15;
       if (needShort || time === 'short') sc += 25;
       if (style === 'yolo') sc += 20;
-      R.push({ id: 'step7', score: sc,
-        reason: `7 ngày, tổng 885k. ${gl === 'gift' ? 'Đủ mua 1 món quà ý nghĩaa!' : gl === 'food' ? '1 tuần gom đủ 1 bữa xịnn!' : 'Nhanh gọn test ý chí trước khi chiến dàii!'}`
+      R.push({ id: 'step7', score: sc, days: 7, amount: 5000, total: 885000,
+        reason: `7 ngày, tổng 885k. ${gl === 'gift' ? 'Đủ quà ý nghĩa!' : 'Test ý chí nhanh!'}`
       });
     }
 
-    // 12 THÁNG ĐẠI CHIẾN — du lịch lớn, trả nợ, đầu tư, tiền học
+    // ===== 12 THÁNG ĐẠI CHIẾN (monthly fixed) =====
     if (savingNum >= 500000 && time !== 'short') {
+      // Tính monthly amount dựa trên goal
+      const monthly = ga > 0 ? Math.max(100000, Math.ceil(ga / 12 / 10000) * 10000) : Math.min(savingNum, 500000);
+      const months = ga > 0 ? Math.max(3, Math.min(24, Math.ceil(ga / monthly))) : 12;
+      const pTotal = monthly * months;
       let sc = 40;
       if (gl === 'travel' || gl === 'debt' || gl === 'invest' || gl === 'tuition') sc += 25;
       if (time === 'long') sc += 20;
-      if (ga > 0 && ga <= 6000000) sc += 15;
       if (style === 'safe') sc += 10;
-      R.push({ id: 'payday', score: sc,
-        reason: ga > 0
-          ? `500k/tháng x 12 = 6 triệu. ${total90Enough(6000000, ga, glLabel)}`
-          : `Mỗi tháng trích 500k — cuối năm có 6 triệu cho ${glLabel || 'kế hoạch lớn'}!`
+      R.push({ id: 'payday', score: sc, days: months, amount: monthly, total: pTotal,
+        reason: `${formatVND(monthly)}/tháng x ${months} tháng = ${formatVND(pTotal)}. ${ga > 0 ? enough(pTotal, ga, glLabel) : `Dài hơi cho ${glLabel}!`}`
       });
     }
 
     R.sort((a, b) => b.score - a.score);
-    setResult(R.slice(0, 3));
+    setResult(R.slice(0, 3).map(({ score: _s, ...r }) => r));
     setStep(5);
   };
 
-  function total90Enough(total: number, target: number, label: string) {
+  function enough(total: number, target: number, label: string) {
     if (total >= target) return `Dư sức cho ${label} ${formatVND(target)}!`;
     return `Được ${formatVND(total)}, cần thêm ${formatVND(target - total)} cho ${label}.`;
   }
@@ -999,7 +1063,18 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBac
                           <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#aaa' }}>{r.reason}</p>
                         </div>
                       </div>
-                      <button onClick={() => { playClickByIndex(ri); onPick(r.id); }}
+                      {/* Chi tiết số tiền tính cho bro */}
+                      <div className="mb-2 px-2 py-1.5 relative z-10 rounded" style={{ background: `${tm.color}08`, border: `1px solid ${tm.color}22` }}>
+                        <div className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#999' }}>
+                          <span>{tm.type === 'monthly' ? 'Số tháng' : tm.type === 'weekly' ? 'Số tuần' : 'Số ngày'}: <span style={{ color: tm.color }}>{r.days}</span></span>
+                          <span>{tm.canEditAmount || tm.type === 'monthly' ? `${formatVND(r.amount)}/${tm.type === 'monthly' ? 'tháng' : 'ngày'}` : ''}</span>
+                        </div>
+                        <div className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#ffd700' }}>
+                          <span>Tổng dự kiến:</span>
+                          <span>{formatVND(r.total)}</span>
+                        </div>
+                      </div>
+                      <button onClick={() => { playClickByIndex(ri); onPick(r.id, r.days, r.amount); }}
                         className="w-full py-2 flex items-center justify-center gap-2 rounded-lg relative z-10"
                         style={{
                           fontFamily: "'VT323', monospace", fontSize: '17px', color: '#fff', cursor: 'pointer',
@@ -1049,13 +1124,130 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string) => void; onBac
 }
 
 // ===== MAIN APP =====
-type Screen = 'home' | 'setup' | 'progress' | 'suggest';
+type Screen = 'home' | 'setup' | 'progress' | 'suggest' | 'budget' | 'piggy';
+
+// ===== PIGGY SCREEN =====
+function PiggyScreen({ piggy, onWithdraw, onBack }: { piggy: PiggyEntry[]; onWithdraw: (amount: number, reason: string) => void; onBack: () => void }) {
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [wAmt, setWAmt] = useState('');
+  const [wReason, setWReason] = useState('');
+
+  const deposits = piggy.filter(p => p.type === 'deposit');
+  const withdrawals = piggy.filter(p => p.type === 'withdraw');
+  const bal = piggy.reduce((s, p) => s + (p.type === 'deposit' ? p.amount : -p.amount), 0);
+  const totalIn = deposits.reduce((s, p) => s + p.amount, 0);
+  const totalOut = withdrawals.reduce((s, p) => s + p.amount, 0);
+
+  const doWithdraw = () => {
+    const amt = parseInt(wAmt) || 0;
+    if (amt <= 0 || amt > bal) return;
+    onWithdraw(amt, wReason || 'Rút tiền');
+    setWAmt(''); setWReason(''); setShowWithdraw(false);
+    playClickByIndex(7);
+  };
+
+  return (
+    <div className="min-h-screen min-h-[100dvh] grid-pattern relative scanlines">
+      <FloatingIcons />
+      <div className="relative z-10 p-2 sm:p-4 max-w-lg mx-auto">
+        <button onClick={() => { playBack(); onBack(); }} className="btn-3d px-3 py-1 mb-3 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+          <Ic src="/images/y2k-flame.png" size={12} tap /> {'<<<'} VỀ
+        </button>
+
+        {/* Header — con heo lớn */}
+        <div className="text-center mb-4 vhs-jitter">
+          <PiggySvg size={80} />
+          <h2 className="glitch-text mt-1" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '12px', color: '#ffd700', lineHeight: '2.5' }}>CON HEO ĐẤT</h2>
+        </div>
+
+        {/* Số dư */}
+        <div className="retro-panel p-4 mb-3 text-center rounded-[18px]" style={{ border: '3px outset #ffd700', boxShadow: '0 0 25px #ffd70012' }}>
+          <p style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#888' }}>Trong heo hiện có:</p>
+          <p className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '18px', color: bal > 0 ? '#39ff14' : '#555', lineHeight: '2.5' }}>
+            {bal > 0 ? fmt(bal) : '0đ — chưa có gì'}
+          </p>
+          <div className="flex justify-center gap-4 mt-2" style={{ fontFamily: "'VT323', monospace", fontSize: '14px' }}>
+            <span style={{ color: '#39ff14' }}>Tổng vào: +{fmt(totalIn)}</span>
+            <span style={{ color: '#ff4400' }}>Tổng ra: -{fmt(totalOut)}</span>
+          </div>
+        </div>
+
+        {/* Lịch sử */}
+        {piggy.length > 0 && (
+          <div className="retro-panel p-3 mb-3 y2k-card tilt-2">
+            <p className="mb-2 flex items-center gap-2" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '8px', color: '#ffd700', lineHeight: '2' }}>
+              <Ic src="/images/y2k-star.png" size={12} className="animate-spin-slow" /> LỊCH SỬ
+            </p>
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {[...piggy].reverse().map(p => (
+                <div key={p.id} className="flex justify-between py-1 px-2 rounded card-enter" style={{
+                  background: p.type === 'deposit' ? '#39ff1406' : '#ff202006',
+                  border: `1px solid ${p.type === 'deposit' ? '#39ff1411' : '#ff202011'}`,
+                }}>
+                  <div>
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888' }}>{fmtDate(p.date)}</p>
+                    {p.reason && <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#666' }}>{p.reason}</p>}
+                  </div>
+                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: p.type === 'deposit' ? '#39ff14' : '#ff4400' }}>
+                    {p.type === 'deposit' ? '+' : '-'}{fmt(p.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Rút tiền */}
+        {bal > 0 && !showWithdraw && (
+          <button onClick={() => { setShowWithdraw(true); playClickByIndex(6); }}
+            className="w-full py-2.5 rounded-lg flex items-center justify-center gap-2 mb-3 y2k-card tilt-4"
+            style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#ff8800', cursor: 'pointer', border: '2px outset #ff880066', background: '#ff880008' }}>
+            <Ic src="/images/y2k-skull.png" size={16} tap /> RÚT TIỀN TỪ HEO <Ic src="/images/y2k-skull.png" size={16} tap />
+          </button>
+        )}
+
+        {showWithdraw && (
+          <div className="retro-panel p-3 mb-3 animate-bounce-in" style={{ border: '2px outset #ff880044' }}>
+            <p className="mb-1" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#ff8800' }}>Trong heo: {fmt(bal)}</p>
+            <input type="text" inputMode="numeric" value={wAmt} onChange={e => { setWAmt(e.target.value.replace(/\D/g, '')); playInputTick(); }}
+              placeholder="Số tiền rút (VNĐ)" className="w-full py-2 px-2 mb-1" style={{ fontSize: '18px', borderColor: '#ff880088' }} />
+            {parseInt(wAmt) > 0 && (
+              <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: parseInt(wAmt) <= bal ? '#ff8800' : '#ff2020' }}>
+                {parseInt(wAmt) <= bal ? `Rút ${fmt(parseInt(wAmt))}, còn lại ${fmt(bal - parseInt(wAmt))}` : 'Vượt quá số tiền trong heo!'}
+              </p>
+            )}
+            <input type="text" value={wReason} onChange={e => setWReason(e.target.value)}
+              placeholder="Lý do rút (VD: Mua quà)" className="w-full py-1.5 px-2 mb-2" style={{ fontSize: '16px' }} />
+            <div className="flex gap-2">
+              <button onClick={doWithdraw} className={`flex-1 py-2 rounded-lg ${parseInt(wAmt) > 0 && parseInt(wAmt) <= bal ? '' : 'opacity-30'}`}
+                style={{ fontFamily: "'VT323', monospace", fontSize: '17px', color: '#ff8800', cursor: 'pointer', border: '2px outset #ff8800' }}>
+                RÚT
+              </button>
+              <button onClick={() => setShowWithdraw(false)} className="py-2 px-4 rounded-lg"
+                style={{ fontFamily: "'VT323', monospace", fontSize: '17px', color: '#555', cursor: 'pointer', border: '1px solid #333' }}>HỦY</button>
+            </div>
+          </div>
+        )}
+
+        {bal === 0 && piggy.length === 0 && (
+          <div className="text-center py-6">
+            <PiggySvg size={60} />
+            <p className="mt-2 glitch-flicker" style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#555' }}>
+              Heo đang rỗngg! Vào "Quản Lý Chi Tiêu" để bỏ heo nhaa
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [data, setData] = useState<AppData>(loadData);
   const [screen, setScreen] = useState<Screen>(data.activeChallengeId ? 'progress' : 'home');
   const [setupId, setSetupId] = useState<string | null>(null);
   const [fixedAmts, setFixedAmts] = useState<Record<string, number>>({});
+  const [suggestedDays, setSuggestedDays] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const { particles, spawn } = useClickEffect();
 
@@ -1146,13 +1338,39 @@ export default function App() {
   // ===== LOADING SCREEN =====
   if (loading) return <LoadingScreen onDone={() => { setLoading(false); unlockAudio(); }} />;
 
+  // ===== PIGGY SCREEN =====
+  if (screen === 'piggy') return <PiggyScreen
+    piggy={data.piggy || []}
+    onWithdraw={(amount, reason) => {
+      const entry: PiggyEntry = { id: String(Date.now()), amount, date: new Date().toISOString(), type: 'withdraw', reason };
+      save({ ...data, piggy: [...(data.piggy || []), entry] });
+    }}
+    onBack={goHome}
+  />;
+
+  // ===== BUDGET SCREEN =====
+  if (screen === 'budget') return <BudgetPlanner
+    draft={data.draft}
+    onSaveDraft={(d) => save({ ...data, draft: d })}
+    onDeposit={(amount) => {
+      const entry: PiggyEntry = { id: String(Date.now()), amount, date: new Date().toISOString(), type: 'deposit' };
+      save({ ...data, piggy: [...(data.piggy || []), entry], draft: undefined });
+    }}
+    onBack={goHome}
+  />;
+
   // ===== SUGGEST SCREEN =====
-  if (screen === 'suggest') return <SuggestScreen onPick={(id) => { openSetup(id); }} onBack={goHome} />;
+  if (screen === 'suggest') return <SuggestScreen onPick={(id, days, amount) => {
+    // Pre-fill setup với số ngày + số tiền từ gợi ý
+    setFixedAmts(prev => ({ ...prev, [id]: amount }));
+    setSuggestedDays(prev => ({ ...prev, [id]: days }));
+    openSetup(id);
+  }} onBack={goHome} />;
 
   // ===== SETUP SCREEN =====
   if (screen === 'setup' && setupId) {
     const t = getTemplate(setupId);
-    if (t) return <SetupScreen template={t} onStart={(d, a) => startChallenge(setupId, d, a)} onBack={goHome} />;
+    if (t) return <SetupScreen template={t} onStart={(d, a) => startChallenge(setupId, d, a)} onBack={goHome} initDays={suggestedDays[setupId]} initAmount={fixedAmts[setupId]} />;
   }
 
   // ===== PROGRESS SCREEN =====
@@ -1216,21 +1434,90 @@ export default function App() {
           </div>
         </div>
 
-        {/* SUGGEST BUTTON */}
+        {/* CON HEO ĐẤT — LUÔN HIỆN */}
+        {(() => {
+          const bal = (data.piggy || []).reduce((s, p) => s + (p.type === 'deposit' ? p.amount : -p.amount), 0);
+          const hasMoney = bal > 0;
+          const entries = (data.piggy || []).length;
+          return (
+            <div className="p-3 sm:p-4 mb-3 y2k-card tilt-5 idle-breathe rounded-[20px] cursor-pointer relative overflow-hidden"
+              onClick={() => { playClickByIndex(4); setScreen('piggy'); }}
+              style={{
+                background: hasMoney
+                  ? 'linear-gradient(145deg, #1a1500, #040408, #1a1500)'
+                  : 'linear-gradient(145deg, #0e0e1a, #040408, #0e0e1a)',
+                border: `3px outset ${hasMoney ? '#ffd700' : '#333355'}`,
+                boxShadow: hasMoney ? '0 0 25px #ffd70015, inset 0 0 30px #ffd70005' : 'inset 0 0 20px rgba(0,170,255,0.03), 4px 4px 0 #030306',
+              }}>
+              <div className="flex items-center gap-3 relative z-10">
+                <div className={`flex-shrink-0 ${hasMoney ? 'animate-float' : ''}`}>
+                  <PiggySvg size={52} />
+                </div>
+                <div className="flex-1">
+                  <p className={hasMoney ? 'glitch-flicker' : ''} style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '9px', color: hasMoney ? '#ffd700' : '#555', lineHeight: '2' }}>
+                    CON HEO ĐẤT
+                  </p>
+                  {hasMoney ? (
+                    <p className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '15px', color: '#39ff14', lineHeight: '2' }}>{fmt(bal)}</p>
+                  ) : (
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '17px', color: '#555' }}>Chưa có tiền — bấm vào để bắt đầuu!</p>
+                  )}
+                  {entries > 0 && <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#666' }}>{entries} lần bỏ heo</p>}
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <Ic src="/images/y2k-star.png" size={18} className={hasMoney ? 'animate-spin-slow' : ''} tap />
+                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888' }}>MỞ</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* BẢN NHÁP — nếu có draft */}
+        {data.draft && data.draft.salary > 0 && (
+          <div className="retro-panel-cyan p-3 mb-3 y2k-card tilt-3 rounded-[14px] cursor-pointer" onClick={() => { playNavigate(); setScreen('budget'); }}
+            style={{ border: '2px outset #00d4ff88' }}>
+            <div className="flex items-center gap-2 relative z-10">
+              <Ic src="/images/y2k-lightning.png" size={22} className="animate-float" tap />
+              <div className="flex-1">
+                <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#00d4ff' }}>BẢN NHÁP CHI TIÊU</p>
+                <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#666' }}>Lương: {fmt(data.draft.salary)} | {data.draft.bills.length} khoản | {fmtDate(data.draft.savedAt)}</p>
+              </div>
+              <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#00d4ff' }}>MỞ</span>
+            </div>
+          </div>
+        )}
+
+        {/* SUGGEST + BUDGET BUTTONS */}
         {!hasActive && (
-          <button onClick={() => { playNavigate(); setScreen('suggest'); }}
-            className="w-full mb-4 py-3 flex items-center justify-center gap-3 rounded-[16px] y2k-card cursor-pointer"
-            style={{
-              background: 'linear-gradient(135deg, #0a0818, #040408, #08001a)',
-              border: '3px outset #aa44ff',
-              boxShadow: 'inset 0 0 30px rgba(170,68,255,0.05), 4px 4px 0 #030306, 0 0 20px rgba(170,68,255,0.1)',
-              fontFamily: "'VT323', monospace", fontSize: '20px', color: '#aa44ff',
-              textShadow: '0 0 8px rgba(170,68,255,0.5)',
-            }}>
-            <Ic src="/images/y2k-star.png" size={20} className="animate-spin-slow" tap />
-            KHÔNG BIẾT CHỌN GÌ? ĐỂ TAO GỢI Ý
-            <Ic src="/images/y2k-lightning.png" size={20} className="animate-float" tap />
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <button onClick={() => { playNavigate(); setScreen('suggest'); }}
+              className="py-3 flex items-center justify-center gap-2 rounded-[16px] y2k-card cursor-pointer"
+              style={{
+                background: 'linear-gradient(135deg, #0a0818, #040408, #08001a)',
+                border: '3px outset #aa44ff',
+                boxShadow: 'inset 0 0 30px rgba(170,68,255,0.05), 4px 4px 0 #030306, 0 0 20px rgba(170,68,255,0.1)',
+                fontFamily: "'VT323', monospace", fontSize: '17px', color: '#aa44ff',
+                textShadow: '0 0 8px rgba(170,68,255,0.5)',
+              }}>
+              <Ic src="/images/y2k-star.png" size={18} className="animate-spin-slow" tap />
+              KHÔNG BIẾT CHỌN GÌ?
+              <Ic src="/images/y2k-lightning.png" size={18} className="animate-float" tap />
+            </button>
+            <button onClick={() => { playNavigate(); setScreen('budget'); }}
+              className="py-3 flex items-center justify-center gap-2 rounded-[16px] y2k-card cursor-pointer"
+              style={{
+                background: 'linear-gradient(135deg, #081800, #040408, #001a08)',
+                border: '3px outset #e8a020',
+                boxShadow: 'inset 0 0 30px rgba(232,160,32,0.05), 4px 4px 0 #030306, 0 0 20px rgba(232,160,32,0.1)',
+                fontFamily: "'VT323', monospace", fontSize: '17px', color: '#e8a020',
+                textShadow: '0 0 8px rgba(232,160,32,0.5)',
+              }}>
+              <Ic src="/images/y2k-trophy.png" size={18} className="animate-float" tap />
+              QUẢN LÝ CHI TIÊU
+              <Ic src="/images/y2k-flame.png" size={18} className="animate-flame" tap />
+            </button>
+          </div>
         )}
 
         {/* ACTIVE CHALLENGE BANNER */}

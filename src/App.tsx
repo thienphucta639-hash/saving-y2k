@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { loadData, saveData, AppData, ChallengeData, PiggyEntry } from './utils/storage';
-import { playY2KSuccess, playY2KWin, unlockAudio, playClickByIndex, playNavigate, playBack, playQuitWarn, playStay, playUntoggle, playInputTick, tapIconByName, tapTitle, tapSubtitle, tapUser, tapFooterIcon, tapSparkle } from './utils/sounds';
+import { loadData, saveData, AppData, ChallengeData, PiggyEntry, ReceivedInvoice } from './utils/storage';
+import { playY2KSuccess, playY2KWin, unlockAudio, playClickByIndex, playNavigate, playBack, playQuitWarn, playStay, playUntoggle, playInputTick, tapIconByName, tapTitle, tapUser, tapFooterIcon, tapSparkle } from './utils/sounds';
 import { useClickEffect, ClickParticles, EffectType } from './components/ClickEffects';
 import BudgetPlanner from './components/BudgetPlanner';
 
@@ -1124,7 +1124,112 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string, days: number, 
 }
 
 // ===== MAIN APP =====
-type Screen = 'home' | 'setup' | 'progress' | 'suggest' | 'budget' | 'piggy';
+type Screen = 'home' | 'setup' | 'progress' | 'suggest' | 'budget' | 'piggy' | 'invoices';
+
+// ===== INVOICE SCREEN =====
+function InvoiceScreen({ invoices, onMarkRead, onDelete, onImportToBudget, onBack }: {
+  invoices: ReceivedInvoice[];
+  onMarkRead: (id: string) => void;
+  onDelete: (id: string) => void;
+  onImportToBudget: (inv: ReceivedInvoice) => void;
+  onBack: () => void;
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const unread = invoices.filter(i => !i.read).length;
+
+  return (
+    <div className="min-h-screen min-h-[100dvh] grid-pattern relative scanlines">
+      <FloatingIcons />
+      <div className="relative z-10 p-2 sm:p-4 max-w-lg mx-auto">
+        <button onClick={() => { playBack(); onBack(); }} className="btn-3d px-3 py-1 mb-3 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
+          <Ic src="/images/y2k-flame.png" size={12} tap /> {'<<<'} VỀ
+        </button>
+
+        <div className="text-center mb-4 vhs-jitter">
+          <Ic src="/images/y2k-lightning.png" size={35} className="animate-float mx-auto" tap />
+          <h2 className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#00d4ff', lineHeight: '2.2' }}>HÓA ĐƠN NHẬN</h2>
+          <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#888' }}>
+            {invoices.length > 0 ? `${invoices.length} hóa đơn${unread > 0 ? ` (${unread} mới)` : ''}` : 'Chưa có hóa đơn nào'}
+          </p>
+        </div>
+
+        {/* Hướng dẫn nhận hóa đơn */}
+        {invoices.length === 0 && (
+          <div className="retro-panel p-3 mb-3 text-center">
+            <Ic src="/images/y2k-star.png" size={30} className="animate-spin-slow mx-auto mb-2" />
+            <p style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#aaa' }}>
+              Chỉ nhận hóa đơn từ:
+            </p>
+            <a href="https://daily-tracker-ashy-sigma.vercel.app/" target="_blank" rel="noopener noreferrer"
+              className="block my-2 px-2 py-1.5 rounded" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#00d4ff', background: '#00d4ff08', border: '1px solid #00d4ff22', textDecoration: 'none' }}>
+              daily-tracker-ashy-sigma.vercel.app
+            </a>
+            <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#666' }}>
+              Xuất hóa đơn từ Daily Tracker → tự động vào đâyy!
+            </p>
+          </div>
+        )}
+
+        {/* Danh sách hóa đơn */}
+        <div className="space-y-2">
+          {[...invoices].reverse().map(inv => {
+            const isOpen = openId === inv.id;
+            return (
+              <div key={inv.id} className={`retro-panel p-3 y2k-card ${!inv.read ? 'border-glow' : ''} rounded-[12px]`}
+                style={{ borderColor: !inv.read ? '#00d4ff' : '#333355' }}>
+                {/* Header — bấm mở/đóng */}
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                  setOpenId(isOpen ? null : inv.id);
+                  if (!inv.read) onMarkRead(inv.id);
+                  playClickByIndex(1);
+                }}>
+                  <Ic src="/images/y2k-lightning.png" size={18} className={!inv.read ? 'animate-float' : ''} />
+                  <div className="flex-1 min-w-0">
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: !inv.read ? '#00d4ff' : '#aaa' }}>
+                      {inv.from} {!inv.read && <span style={{ color: '#ffd700', fontSize: '12px' }}>MỚI</span>}
+                    </p>
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#666' }}>{fmtDate(inv.date)}</p>
+                  </div>
+                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#ff4400' }}>-{fmt(inv.total)}</span>
+                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#888' }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+
+                {/* Chi tiết mở ra */}
+                {isOpen && (
+                  <div className="mt-2 pt-2 animate-bounce-in" style={{ borderTop: '1px dashed #222' }}>
+                    <div className="space-y-0.5 mb-2">
+                      {inv.items.map((item, i) => (
+                        <div key={i} className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '14px' }}>
+                          <span style={{ color: '#ccc' }}>{item.name}</span>
+                          <span style={{ color: '#ff4400' }}>{fmt(item.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="h-[1px] my-1" style={{ background: '#333' }} />
+                      <div className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '15px' }}>
+                        <span style={{ color: '#fff' }}>Tổng:</span>
+                        <span style={{ color: '#ff4400', fontWeight: 'bold' }}>{fmt(inv.total)}</span>
+                      </div>
+                    </div>
+                    {inv.note && <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888', marginBottom: '8px' }}>Ghi chú: {inv.note}</p>}
+                    <div className="flex gap-1.5">
+                      <button onClick={() => { onImportToBudget(inv); playNavigate(); }}
+                        className="flex-1 py-1.5 rounded flex items-center justify-center gap-1"
+                        style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#39ff14', border: '1px solid #39ff1444', cursor: 'pointer' }}>
+                        <Ic src="/images/y2k-star.png" size={11} /> NHẬP VÀO CHI TIÊU
+                      </button>
+                      <button onClick={() => { onDelete(inv.id); playClickByIndex(2); }}
+                        className="py-1.5 px-3 rounded" style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#ff2020', border: '1px solid #ff202033', cursor: 'pointer' }}>XÓA</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ===== PIGGY SCREEN =====
 function PiggyScreen({ piggy, onWithdraw, onBack }: { piggy: PiggyEntry[]; onWithdraw: (amount: number, reason: string) => void; onBack: () => void }) {
@@ -1260,6 +1365,65 @@ export default function App() {
     return () => document.removeEventListener('click', handler);
   }, []);
 
+  // Nhận hóa đơn — CHỈ từ daily-tracker-umber.vercel.app
+  const ALLOWED_SOURCE = 'daily-tracker-ashy-sigma.vercel.app';
+
+  // Cách 1: URL params (?invoice=base64&source=domain)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const invoiceParam = params.get('invoice');
+      const source = params.get('source') || '';
+      if (invoiceParam) {
+        const decoded = JSON.parse(atob(invoiceParam));
+        const from = decoded.from || source || '';
+        // Chỉ chấp nhận từ Daily Tracker
+        if (!from.includes('daily-tracker') && !source.includes(ALLOWED_SOURCE)) {
+          console.warn('Từ chối hóa đơn từ nguồn không xác định:', from);
+          window.history.replaceState({}, '', window.location.pathname);
+          return;
+        }
+        const inv: ReceivedInvoice = {
+          id: String(Date.now()),
+          from: 'Daily Tracker',
+          date: new Date().toISOString(),
+          items: decoded.items || [],
+          total: decoded.total || decoded.items?.reduce((s: number, i: { amount: number }) => s + i.amount, 0) || 0,
+          note: decoded.note || '',
+          read: false,
+        };
+        if (inv.total > 0) {
+          save({ ...data, invoices: [...(data.invoices || []), inv] });
+        }
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (_) { /* invalid param */ }
+  }, []);
+
+  // Cách 2: postMessage từ iframe/popup (chỉ nhận từ Daily Tracker)
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (!e.origin.includes(ALLOWED_SOURCE)) return; // CHẶN nguồn khác
+      try {
+        const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (msg.type === 'invoice' && msg.items && msg.total > 0) {
+          const inv: ReceivedInvoice = {
+            id: String(Date.now()),
+            from: 'Daily Tracker',
+            date: new Date().toISOString(),
+            items: msg.items,
+            total: msg.total,
+            note: msg.note || '',
+            read: false,
+          };
+          save({ ...data, invoices: [...(data.invoices || []), inv] });
+        }
+      } catch (_) { /* ignore */ }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [data]);
+
   const activeChallenge = data.activeChallengeId ? data.challenges.find(c => c.id === data.activeChallengeId) : null;
   const activeTemplate = data.activeChallengeId ? getTemplate(data.activeChallengeId) : null;
 
@@ -1338,6 +1502,24 @@ export default function App() {
   // ===== LOADING SCREEN =====
   if (loading) return <LoadingScreen onDone={() => { setLoading(false); unlockAudio(); }} />;
 
+  // ===== INVOICE SCREEN =====
+  if (screen === 'invoices') return <InvoiceScreen
+    invoices={data.invoices || []}
+    onMarkRead={(id) => save({ ...data, invoices: (data.invoices || []).map(i => i.id === id ? { ...i, read: true } : i) })}
+    onDelete={(id) => save({ ...data, invoices: (data.invoices || []).filter(i => i.id !== id) })}
+    onImportToBudget={(inv) => {
+      // Import hóa đơn vào draft chi tiêu
+      const existingBills = data.draft?.bills || [];
+      const newBills = inv.items.map(item => ({ id: String(Date.now() + Math.random()), name: item.name, amount: item.amount, dueDay: new Date().getDate(), dueMonth: new Date().getMonth() + 1 }));
+      save({
+        ...data,
+        draft: { salary: data.draft?.salary || 0, bills: [...existingBills, ...newBills], spendingMoney: data.draft?.spendingMoney || 0, savedAt: new Date().toISOString() },
+      });
+      setScreen('budget');
+    }}
+    onBack={goHome}
+  />;
+
   // ===== PIGGY SCREEN =====
   if (screen === 'piggy') return <PiggyScreen
     piggy={data.piggy || []}
@@ -1394,130 +1576,100 @@ export default function App() {
       <Marquee />
       <div className="relative z-10 max-w-4xl mx-auto px-2 sm:px-4 pb-8">
 
-        {/* HEADER */}
-        <div className="text-center py-5 sm:py-8">
-          <div className="flex justify-center items-center gap-2 sm:gap-3 mb-3">
-            <Ic src="/images/y2k-flame.png" size={32} className="animate-flame" glitch tap />
-            <Ic src="/images/y2k-lightning.png" size={38} className="animate-float" glitch tap />
-            <Ic src="/images/y2k-trophy.png" size={42} className="vhs-jitter" glitch tap />
-            <Ic src="/images/y2k-lightning.png" size={38} className="animate-float" glitch tap />
-            <Ic src="/images/y2k-flame.png" size={32} className="animate-flame" glitch tap />
-          </div>
-          <h1 onClick={tapTitle} className="glitch-text flex items-center justify-center gap-1 cursor-pointer" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 'clamp(14px, 5vw, 22px)', lineHeight: '2.5', color: '#e0e0e0' }}>
-            <Ic src="/images/y2k-star.png" size={18} tap /> THỬ THÁCH <Ic src="/images/y2k-star.png" size={18} tap />
-          </h1>
-          <h2 onClick={tapSubtitle} className="glitch-flicker cursor-pointer" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 'clamp(10px, 3.5vw, 16px)', lineHeight: '2.2', background: 'linear-gradient(180deg, #ffd700, #ff8800)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', filter: 'drop-shadow(2px 2px 0 #000)' }}>TIẾT KIỆM TIỀNN</h2>
-          
-          {/* Decorative line */}
-          <div className="flex items-center gap-2 mt-3 max-w-xs mx-auto">
-            <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, transparent, #00d4ff, transparent)' }} />
-            <Ic src="/images/y2k-dragon.png" size={18} className="animate-float" tap />
-            <div className="flex-1 h-[1px]" style={{ background: 'linear-gradient(90deg, transparent, #ff4400, transparent)' }} />
+        {/* HEADER + USER — compact 1 block */}
+        <div className="retro-panel p-3 mb-3 vhs-jitter" onClick={tapUser} style={{ cursor: 'pointer' }}>
+          <div className="flex items-center gap-2 relative z-10">
+            {/* Icons nhỏ */}
+            <Ic src="/images/y2k-flame.png" size={22} className="animate-flame" glitch tap />
+            {/* Title */}
+            <div className="flex-1 text-center" onClick={e => { e.stopPropagation(); tapTitle(); }}>
+              <h1 className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 'clamp(11px, 4vw, 16px)', lineHeight: '1.8', color: '#e0e0e0' }}>
+                THỬ THÁCH
+              </h1>
+              <h2 className="glitch-flicker" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 'clamp(8px, 2.5vw, 11px)', lineHeight: '1.6', background: 'linear-gradient(180deg, #ffd700, #ff8800)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                TIẾT KIỆM TIỀNN
+              </h2>
+            </div>
+            {/* User info */}
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#555' }}>Yo bro</p>
+                <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '7px', color: '#00d4ff', lineHeight: '1.6' }}>{data.userName}</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <Ic src="/images/y2k-trophy.png" size={20} glitch tap />
+                <span style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#ffd700' }}>{data.challenges.reduce((s, c) => s + (c.totalCups ?? 0), 0)}</span>
+              </div>
+            </div>
+            <Ic src="/images/y2k-flame.png" size={22} className="animate-flame" glitch tap />
           </div>
         </div>
 
-        {/* USER */}
-        <div onClick={tapUser} className="retro-panel p-3 sm:p-4 mb-4 y2k-card vhs-jitter cursor-pointer">
-          <div className="flex items-center gap-3 relative z-10">
-            <Ic src="/images/y2k-skull.png" size={35} glitch tap />
-            <div className="flex-1">
-              <p className="glitch-flicker" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#666' }}>Yo, chào bro</p>
-              <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#00d4ff', textShadow: '0 0 10px rgba(0,212,255,0.5)', lineHeight: '2' }}>{data.userName}</p>
-            </div>
-            <div className="flex flex-col items-center gap-0.5">
-              <Ic src="/images/y2k-trophy.png" size={28} glitch tap />
-              <span style={{ fontFamily: "'VT323', monospace", fontSize: '18px', color: '#ffd700', textShadow: '0 0 6px rgba(255,215,0,0.4)' }}>
-                {data.challenges.reduce((s, c) => s + (c.totalCups ?? 0), 0)}
-              </span>
-              <span style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#888' }}>cup</span>
-            </div>
-          </div>
-        </div>
-
-        {/* CON HEO ĐẤT — LUÔN HIỆN */}
+        {/* HEO + HÓA ĐƠN + NHÁP — 1 hàng ngang gọn */}
         {(() => {
           const bal = (data.piggy || []).reduce((s, p) => s + (p.type === 'deposit' ? p.amount : -p.amount), 0);
-          const hasMoney = bal > 0;
-          const entries = (data.piggy || []).length;
+          const invs = data.invoices || [];
+          const unread = invs.filter(i => !i.read).length;
+          const hasDraft = data.draft && data.draft.salary > 0;
           return (
-            <div className="p-3 sm:p-4 mb-3 y2k-card tilt-5 idle-breathe rounded-[20px] cursor-pointer relative overflow-hidden"
-              onClick={() => { playClickByIndex(4); setScreen('piggy'); }}
-              style={{
-                background: hasMoney
-                  ? 'linear-gradient(145deg, #1a1500, #040408, #1a1500)'
-                  : 'linear-gradient(145deg, #0e0e1a, #040408, #0e0e1a)',
-                border: `3px outset ${hasMoney ? '#ffd700' : '#333355'}`,
-                boxShadow: hasMoney ? '0 0 25px #ffd70015, inset 0 0 30px #ffd70005' : 'inset 0 0 20px rgba(0,170,255,0.03), 4px 4px 0 #030306',
-              }}>
-              <div className="flex items-center gap-3 relative z-10">
-                <div className={`flex-shrink-0 ${hasMoney ? 'animate-float' : ''}`}>
-                  <PiggySvg size={52} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+              {/* Heo */}
+              <div className="p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-5" onClick={() => { playClickByIndex(4); setScreen('piggy'); }}
+                style={{ background: bal > 0 ? 'linear-gradient(145deg, #1a1500, #040408)' : '#0a0a14', border: `2px outset ${bal > 0 ? '#ffd700' : '#333'}` }}>
+                <div className="flex items-center gap-2">
+                  <PiggySvg size={32} />
+                  <div className="min-w-0">
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#ffd700' }}>HEO ĐẤT</p>
+                    <p className={bal > 0 ? 'glitch-text' : ''} style={{ fontFamily: "'Press Start 2P', monospace", fontSize: bal > 0 ? '9px' : '8px', color: bal > 0 ? '#39ff14' : '#444', lineHeight: '1.8' }}>
+                      {bal > 0 ? fmt(bal) : '0đ'}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className={hasMoney ? 'glitch-flicker' : ''} style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '9px', color: hasMoney ? '#ffd700' : '#555', lineHeight: '2' }}>
-                    CON HEO ĐẤT
-                  </p>
-                  {hasMoney ? (
-                    <p className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '15px', color: '#39ff14', lineHeight: '2' }}>{fmt(bal)}</p>
-                  ) : (
-                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '17px', color: '#555' }}>Chưa có tiền — bấm vào để bắt đầuu!</p>
-                  )}
-                  {entries > 0 && <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#666' }}>{entries} lần bỏ heo</p>}
+              </div>
+
+              {/* Hóa đơn */}
+              <div className={`p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-3 ${unread > 0 ? 'border-glow' : ''}`}
+                onClick={() => { playClickByIndex(1); setScreen('invoices'); }}
+                style={{ background: '#001018', border: `2px outset ${unread > 0 ? '#00d4ff' : '#1a2a3a'}` }}>
+                <div className="flex items-center gap-2">
+                  <Ic src="/images/y2k-lightning.png" size={24} className={unread > 0 ? 'animate-float' : ''} />
+                  <div className="min-w-0 flex-1">
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: unread > 0 ? '#00d4ff' : '#444' }}>HÓA ĐƠN</p>
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: unread > 0 ? '#aaa' : '#444' }}>
+                      {invs.length === 0 ? 'Trống' : `${invs.length}${unread > 0 ? ` (${unread}!)` : ''}`}
+                    </p>
+                  </div>
+                  {unread > 0 && <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: '#ff2020', fontSize: '10px', fontFamily: "'Press Start 2P'", color: '#fff' }}>{unread}</div>}
                 </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <Ic src="/images/y2k-star.png" size={18} className={hasMoney ? 'animate-spin-slow' : ''} tap />
-                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888' }}>MỞ</span>
+              </div>
+
+              {/* Bản nháp (hoặc nút chi tiêu) */}
+              <div className={`p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-2 ${hasDraft ? '' : 'col-span-2 sm:col-span-1'}`}
+                onClick={() => { playNavigate(); setScreen('budget'); }}
+                style={{ background: hasDraft ? '#000a10' : '#080812', border: `2px outset ${hasDraft ? '#00d4ff88' : '#333'}` }}>
+                <div className="flex items-center gap-2">
+                  <Ic src={hasDraft ? "/images/y2k-lightning.png" : "/images/y2k-trophy.png"} size={22} className="animate-float" />
+                  <div className="min-w-0">
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: hasDraft ? '#00d4ff' : '#e8a020' }}>
+                      {hasDraft ? 'BẢN NHÁP' : 'CHI TIÊU'}
+                    </p>
+                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#666' }}>
+                      {hasDraft ? `${fmt(data.draft!.salary)}` : 'Quản lý'}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           );
         })()}
 
-        {/* BẢN NHÁP — nếu có draft */}
-        {data.draft && data.draft.salary > 0 && (
-          <div className="retro-panel-cyan p-3 mb-3 y2k-card tilt-3 rounded-[14px] cursor-pointer" onClick={() => { playNavigate(); setScreen('budget'); }}
-            style={{ border: '2px outset #00d4ff88' }}>
-            <div className="flex items-center gap-2 relative z-10">
-              <Ic src="/images/y2k-lightning.png" size={22} className="animate-float" tap />
-              <div className="flex-1">
-                <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#00d4ff' }}>BẢN NHÁP CHI TIÊU</p>
-                <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#666' }}>Lương: {fmt(data.draft.salary)} | {data.draft.bills.length} khoản | {fmtDate(data.draft.savedAt)}</p>
-              </div>
-              <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#00d4ff' }}>MỞ</span>
-            </div>
-          </div>
-        )}
-
-        {/* SUGGEST + BUDGET BUTTONS */}
+        {/* SUGGEST — 1 nút gọn */}
         {!hasActive && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <button onClick={() => { playNavigate(); setScreen('suggest'); }}
-              className="py-3 flex items-center justify-center gap-2 rounded-[16px] y2k-card cursor-pointer"
-              style={{
-                background: 'linear-gradient(135deg, #0a0818, #040408, #08001a)',
-                border: '3px outset #aa44ff',
-                boxShadow: 'inset 0 0 30px rgba(170,68,255,0.05), 4px 4px 0 #030306, 0 0 20px rgba(170,68,255,0.1)',
-                fontFamily: "'VT323', monospace", fontSize: '17px', color: '#aa44ff',
-                textShadow: '0 0 8px rgba(170,68,255,0.5)',
-              }}>
-              <Ic src="/images/y2k-star.png" size={18} className="animate-spin-slow" tap />
-              KHÔNG BIẾT CHỌN GÌ?
-              <Ic src="/images/y2k-lightning.png" size={18} className="animate-float" tap />
-            </button>
-            <button onClick={() => { playNavigate(); setScreen('budget'); }}
-              className="py-3 flex items-center justify-center gap-2 rounded-[16px] y2k-card cursor-pointer"
-              style={{
-                background: 'linear-gradient(135deg, #081800, #040408, #001a08)',
-                border: '3px outset #e8a020',
-                boxShadow: 'inset 0 0 30px rgba(232,160,32,0.05), 4px 4px 0 #030306, 0 0 20px rgba(232,160,32,0.1)',
-                fontFamily: "'VT323', monospace", fontSize: '17px', color: '#e8a020',
-                textShadow: '0 0 8px rgba(232,160,32,0.5)',
-              }}>
-              <Ic src="/images/y2k-trophy.png" size={18} className="animate-float" tap />
-              QUẢN LÝ CHI TIÊU
-              <Ic src="/images/y2k-flame.png" size={18} className="animate-flame" tap />
-            </button>
-          </div>
+          <button onClick={() => { playNavigate(); setScreen('suggest'); }}
+            className="w-full py-2 mb-3 flex items-center justify-center gap-2 rounded-[12px] y2k-card cursor-pointer"
+            style={{ background: '#0a0818', border: '2px outset #aa44ff66', fontFamily: "'VT323', monospace", fontSize: '16px', color: '#aa44ff' }}>
+            <Ic src="/images/y2k-star.png" size={14} className="animate-spin-slow" tap /> KHÔNG BIẾT CHỌN GÌ? ĐỂ TAO GỢI Ý <Ic src="/images/y2k-lightning.png" size={14} tap />
+          </button>
         )}
 
         {/* ACTIVE CHALLENGE BANNER */}

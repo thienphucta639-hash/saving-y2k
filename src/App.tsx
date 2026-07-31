@@ -1365,64 +1365,95 @@ export default function App() {
     return () => document.removeEventListener('click', handler);
   }, []);
 
-  // Nhận hóa đơn — CHỈ từ daily-tracker-umber.vercel.app
-  const ALLOWED_SOURCE = 'daily-tracker-ashy-sigma.vercel.app';
+  // ===== NHẬN HÓA ĐƠN — CHỈ từ daily-tracker-ashy-sigma.vercel.app =====
+  const ALLOWED = 'daily-tracker-ashy-sigma.vercel.app';
 
-  // Cách 1: URL params (?invoice=base64&source=domain)
-  useEffect(() => {
+  const parseInvoice = useCallback((raw: unknown): ReceivedInvoice | null => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const invoiceParam = params.get('invoice');
-      const source = params.get('source') || '';
-      if (invoiceParam) {
-        const decoded = JSON.parse(atob(invoiceParam));
-        const from = decoded.from || source || '';
-        // Chỉ chấp nhận từ Daily Tracker
-        if (!from.includes('daily-tracker') && !source.includes(ALLOWED_SOURCE)) {
-          console.warn('Từ chối hóa đơn từ nguồn không xác định:', from);
-          window.history.replaceState({}, '', window.location.pathname);
-          return;
-        }
-        const inv: ReceivedInvoice = {
-          id: String(Date.now()),
-          from: 'Daily Tracker',
-          date: new Date().toISOString(),
-          items: decoded.items || [],
-          total: decoded.total || decoded.items?.reduce((s: number, i: { amount: number }) => s + i.amount, 0) || 0,
-          note: decoded.note || '',
-          read: false,
-        };
-        if (inv.total > 0) {
-          save({ ...data, invoices: [...(data.invoices || []), inv] });
-        }
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    } catch (_) { /* invalid param */ }
+      const d = typeof raw === 'string' ? JSON.parse(raw) : raw as Record<string, unknown>;
+      if (!d || typeof d !== 'object') return null;
+      const items = (d as any).items || (d as any).expenses || (d as any).list || [];
+      const normalItems = (Array.isArray(items) ? items : []).map((i: any) => ({
+        name: String(i.name || i.label || i.title || i.description || 'Mục'),
+        amount: Number(i.amount || i.price || i.cost || 0),
+      })).filter((i: { amount: number }) => i.amount > 0);
+      const total = Number((d as any).total || (d as any).amount || (d as any).sum) || normalItems.reduce((s: number, i: { amount: number }) => s + i.amount, 0);
+      if (total <= 0 && normalItems.length === 0) return null;
+      return {
+        id: String(Date.now()) + String(Math.random()).slice(2, 6),
+        from: String((d as any).from || (d as any).source || 'Daily Tracker'),
+        date: String((d as any).date || new Date().toISOString()),
+        items: normalItems.length > 0 ? normalItems : [{ name: 'Tổng', amount: total }],
+        total, note: String((d as any).note || (d as any).memo || ''), read: false,
+      };
+    } catch { return null; }
   }, []);
 
-  // Cách 2: postMessage từ iframe/popup (chỉ nhận từ Daily Tracker)
+  const addInvoice = useCallback((inv: ReceivedInvoice) => {
+    // Tránh trùng lặp (cùng total + cùng phút)
+    const existing = (data.invoices || []);
+    const isDupe = existing.some(e => e.total === inv.total && Math.abs(new Date(e.date).getTime() - new Date(inv.date).getTime()) < 60000);
+    if (isDupe) return;
+    save({ ...data, invoices: [...existing, inv] });
+  }, [data, save]);
+
+  // Cách 1: URL params — ?invoice=BASE64 hoặc ?data=BASE64 hoặc ?json=URI_ENCODED
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const raw = p.get('invoice') || p.get('data') || p.get('receipt');
+      const rawJson = p.get('json');
+      if (!raw && !rawJson) return;
+
+      let parsed: unknown;
+      if (rawJson) {
+        parsed = JSON.parse(decodeURIComponent(rawJson));
+      } else if (raw) {
+        try { parsed = JSON.parse(atob(raw)); } catch { try { parsed = JSON.parse(decodeURIComponent(raw)); } catch { parsed = JSON.parse(raw); } }
+      }
+      const inv = parseInvoice(parsed);
+      if (inv) addInvoice(inv);
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (_) { /* */ }
+  }, []);
+
+  // Cách 2: postMessage
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (!e.origin.includes(ALLOWED_SOURCE)) return; // CHẶN nguồn khác
-      try {
-        const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (msg.type === 'invoice' && msg.items && msg.total > 0) {
-          const inv: ReceivedInvoice = {
-            id: String(Date.now()),
-            from: 'Daily Tracker',
-            date: new Date().toISOString(),
-            items: msg.items,
-            total: msg.total,
-            note: msg.note || '',
-            read: false,
-          };
-          save({ ...data, invoices: [...(data.invoices || []), inv] });
-        }
-      } catch (_) { /* ignore */ }
+      if (!e.origin.includes(ALLOWED) && !e.origin.includes('daily-tracker')) return;
+      const inv = parseInvoice(e.data);
+      if (inv) addInvoice(inv);
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [data]);
+  }, [parseInvoice, addInvoice]);
+
+  // Cách 3: localStorage cross-tab
+  useEffect(() => {
+    const check = () => {
+      const raw = localStorage.getItem('daily_tracker_invoice');
+      if (raw) { const inv = parseInvoice(raw); if (inv) addInvoice(inv); localStorage.removeItem('daily_tracker_invoice'); }
+    };
+    check(); // check ngay khi load
+    const handler = (e: StorageEvent) => { if (e.key === 'daily_tracker_invoice' && e.newValue) check(); };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, [parseInvoice, addInvoice]);
+
+  // Cách 4: Hash fragment — #invoice=BASE64
+  useEffect(() => {
+    try {
+      const hash = window.location.hash;
+      if (hash.startsWith('#invoice=')) {
+        const raw = hash.slice('#invoice='.length);
+        let parsed: unknown;
+        try { parsed = JSON.parse(atob(raw)); } catch { parsed = JSON.parse(decodeURIComponent(raw)); }
+        const inv = parseInvoice(parsed);
+        if (inv) addInvoice(inv);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (_) { /* */ }
+  }, []);
 
   const activeChallenge = data.activeChallengeId ? data.challenges.find(c => c.id === data.activeChallengeId) : null;
   const activeTemplate = data.activeChallengeId ? getTemplate(data.activeChallengeId) : null;

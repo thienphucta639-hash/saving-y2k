@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { loadData, saveData, AppData, ChallengeData, PiggyEntry, ReceivedInvoice } from './utils/storage';
+import { loadData, saveData, AppData, ChallengeData, PiggyEntry } from './utils/storage';
 import { playY2KSuccess, playY2KWin, unlockAudio, playClickByIndex, playNavigate, playBack, playQuitWarn, playStay, playUntoggle, playInputTick, tapIconByName, tapTitle, tapUser, tapFooterIcon, tapSparkle } from './utils/sounds';
 import { useClickEffect, ClickParticles, EffectType } from './components/ClickEffects';
 import BudgetPlanner from './components/BudgetPlanner';
@@ -1124,112 +1124,7 @@ function SuggestScreen({ onPick, onBack }: { onPick: (id: string, days: number, 
 }
 
 // ===== MAIN APP =====
-type Screen = 'home' | 'setup' | 'progress' | 'suggest' | 'budget' | 'piggy' | 'invoices';
-
-// ===== INVOICE SCREEN =====
-function InvoiceScreen({ invoices, onMarkRead, onDelete, onImportToBudget, onBack }: {
-  invoices: ReceivedInvoice[];
-  onMarkRead: (id: string) => void;
-  onDelete: (id: string) => void;
-  onImportToBudget: (inv: ReceivedInvoice) => void;
-  onBack: () => void;
-}) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const unread = invoices.filter(i => !i.read).length;
-
-  return (
-    <div className="min-h-screen min-h-[100dvh] grid-pattern relative scanlines">
-      <FloatingIcons />
-      <div className="relative z-10 p-2 sm:p-4 max-w-lg mx-auto">
-        <button onClick={() => { playBack(); onBack(); }} className="btn-3d px-3 py-1 mb-3 flex items-center gap-1" style={{ fontFamily: "'VT323', monospace", fontSize: '16px' }}>
-          <Ic src="/images/y2k-flame.png" size={12} tap /> {'<<<'} VỀ
-        </button>
-
-        <div className="text-center mb-4 vhs-jitter">
-          <Ic src="/images/y2k-lightning.png" size={35} className="animate-float mx-auto" tap />
-          <h2 className="glitch-text" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: '10px', color: '#00d4ff', lineHeight: '2.2' }}>HÓA ĐƠN NHẬN</h2>
-          <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#888' }}>
-            {invoices.length > 0 ? `${invoices.length} hóa đơn${unread > 0 ? ` (${unread} mới)` : ''}` : 'Chưa có hóa đơn nào'}
-          </p>
-        </div>
-
-        {/* Hướng dẫn nhận hóa đơn */}
-        {invoices.length === 0 && (
-          <div className="retro-panel p-3 mb-3 text-center">
-            <Ic src="/images/y2k-star.png" size={30} className="animate-spin-slow mx-auto mb-2" />
-            <p style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#aaa' }}>
-              Chỉ nhận hóa đơn từ:
-            </p>
-            <a href="https://daily-tracker-ashy-sigma.vercel.app/" target="_blank" rel="noopener noreferrer"
-              className="block my-2 px-2 py-1.5 rounded" style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: '#00d4ff', background: '#00d4ff08', border: '1px solid #00d4ff22', textDecoration: 'none' }}>
-              daily-tracker-ashy-sigma.vercel.app
-            </a>
-            <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#666' }}>
-              Xuất hóa đơn từ Daily Tracker → tự động vào đâyy!
-            </p>
-          </div>
-        )}
-
-        {/* Danh sách hóa đơn */}
-        <div className="space-y-2">
-          {[...invoices].reverse().map(inv => {
-            const isOpen = openId === inv.id;
-            return (
-              <div key={inv.id} className={`retro-panel p-3 y2k-card ${!inv.read ? 'border-glow' : ''} rounded-[12px]`}
-                style={{ borderColor: !inv.read ? '#00d4ff' : '#333355' }}>
-                {/* Header — bấm mở/đóng */}
-                <div className="flex items-center gap-2 cursor-pointer" onClick={() => {
-                  setOpenId(isOpen ? null : inv.id);
-                  if (!inv.read) onMarkRead(inv.id);
-                  playClickByIndex(1);
-                }}>
-                  <Ic src="/images/y2k-lightning.png" size={18} className={!inv.read ? 'animate-float' : ''} />
-                  <div className="flex-1 min-w-0">
-                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '15px', color: !inv.read ? '#00d4ff' : '#aaa' }}>
-                      {inv.from} {!inv.read && <span style={{ color: '#ffd700', fontSize: '12px' }}>MỚI</span>}
-                    </p>
-                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: '#666' }}>{fmtDate(inv.date)}</p>
-                  </div>
-                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#ff4400' }}>-{fmt(inv.total)}</span>
-                  <span style={{ fontFamily: "'VT323', monospace", fontSize: '16px', color: '#888' }}>{isOpen ? '▲' : '▼'}</span>
-                </div>
-
-                {/* Chi tiết mở ra */}
-                {isOpen && (
-                  <div className="mt-2 pt-2 animate-bounce-in" style={{ borderTop: '1px dashed #222' }}>
-                    <div className="space-y-0.5 mb-2">
-                      {inv.items.map((item, i) => (
-                        <div key={i} className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '14px' }}>
-                          <span style={{ color: '#ccc' }}>{item.name}</span>
-                          <span style={{ color: '#ff4400' }}>{fmt(item.amount)}</span>
-                        </div>
-                      ))}
-                      <div className="h-[1px] my-1" style={{ background: '#333' }} />
-                      <div className="flex justify-between" style={{ fontFamily: "'VT323', monospace", fontSize: '15px' }}>
-                        <span style={{ color: '#fff' }}>Tổng:</span>
-                        <span style={{ color: '#ff4400', fontWeight: 'bold' }}>{fmt(inv.total)}</span>
-                      </div>
-                    </div>
-                    {inv.note && <p style={{ fontFamily: "'VT323', monospace", fontSize: '13px', color: '#888', marginBottom: '8px' }}>Ghi chú: {inv.note}</p>}
-                    <div className="flex gap-1.5">
-                      <button onClick={() => { onImportToBudget(inv); playNavigate(); }}
-                        className="flex-1 py-1.5 rounded flex items-center justify-center gap-1"
-                        style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#39ff14', border: '1px solid #39ff1444', cursor: 'pointer' }}>
-                        <Ic src="/images/y2k-star.png" size={11} /> NHẬP VÀO CHI TIÊU
-                      </button>
-                      <button onClick={() => { onDelete(inv.id); playClickByIndex(2); }}
-                        className="py-1.5 px-3 rounded" style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: '#ff2020', border: '1px solid #ff202033', cursor: 'pointer' }}>XÓA</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+type Screen = 'home' | 'setup' | 'progress' | 'suggest' | 'budget' | 'piggy';
 
 // ===== PIGGY SCREEN =====
 function PiggyScreen({ piggy, onWithdraw, onBack }: { piggy: PiggyEntry[]; onWithdraw: (amount: number, reason: string) => void; onBack: () => void }) {
@@ -1365,95 +1260,7 @@ export default function App() {
     return () => document.removeEventListener('click', handler);
   }, []);
 
-  // ===== NHẬN HÓA ĐƠN — CHỈ từ daily-tracker-ashy-sigma.vercel.app =====
-  const ALLOWED = 'daily-tracker-ashy-sigma.vercel.app';
 
-  const parseInvoice = useCallback((raw: unknown): ReceivedInvoice | null => {
-    try {
-      const d = typeof raw === 'string' ? JSON.parse(raw) : raw as Record<string, unknown>;
-      if (!d || typeof d !== 'object') return null;
-      const items = (d as any).items || (d as any).expenses || (d as any).list || [];
-      const normalItems = (Array.isArray(items) ? items : []).map((i: any) => ({
-        name: String(i.name || i.label || i.title || i.description || 'Mục'),
-        amount: Number(i.amount || i.price || i.cost || 0),
-      })).filter((i: { amount: number }) => i.amount > 0);
-      const total = Number((d as any).total || (d as any).amount || (d as any).sum) || normalItems.reduce((s: number, i: { amount: number }) => s + i.amount, 0);
-      if (total <= 0 && normalItems.length === 0) return null;
-      return {
-        id: String(Date.now()) + String(Math.random()).slice(2, 6),
-        from: String((d as any).from || (d as any).source || 'Daily Tracker'),
-        date: String((d as any).date || new Date().toISOString()),
-        items: normalItems.length > 0 ? normalItems : [{ name: 'Tổng', amount: total }],
-        total, note: String((d as any).note || (d as any).memo || ''), read: false,
-      };
-    } catch { return null; }
-  }, []);
-
-  const addInvoice = useCallback((inv: ReceivedInvoice) => {
-    // Tránh trùng lặp (cùng total + cùng phút)
-    const existing = (data.invoices || []);
-    const isDupe = existing.some(e => e.total === inv.total && Math.abs(new Date(e.date).getTime() - new Date(inv.date).getTime()) < 60000);
-    if (isDupe) return;
-    save({ ...data, invoices: [...existing, inv] });
-  }, [data, save]);
-
-  // Cách 1: URL params — ?invoice=BASE64 hoặc ?data=BASE64 hoặc ?json=URI_ENCODED
-  useEffect(() => {
-    try {
-      const p = new URLSearchParams(window.location.search);
-      const raw = p.get('invoice') || p.get('data') || p.get('receipt');
-      const rawJson = p.get('json');
-      if (!raw && !rawJson) return;
-
-      let parsed: unknown;
-      if (rawJson) {
-        parsed = JSON.parse(decodeURIComponent(rawJson));
-      } else if (raw) {
-        try { parsed = JSON.parse(atob(raw)); } catch { try { parsed = JSON.parse(decodeURIComponent(raw)); } catch { parsed = JSON.parse(raw); } }
-      }
-      const inv = parseInvoice(parsed);
-      if (inv) addInvoice(inv);
-      window.history.replaceState({}, '', window.location.pathname);
-    } catch (_) { /* */ }
-  }, []);
-
-  // Cách 2: postMessage
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (!e.origin.includes(ALLOWED) && !e.origin.includes('daily-tracker')) return;
-      const inv = parseInvoice(e.data);
-      if (inv) addInvoice(inv);
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [parseInvoice, addInvoice]);
-
-  // Cách 3: localStorage cross-tab
-  useEffect(() => {
-    const check = () => {
-      const raw = localStorage.getItem('daily_tracker_invoice');
-      if (raw) { const inv = parseInvoice(raw); if (inv) addInvoice(inv); localStorage.removeItem('daily_tracker_invoice'); }
-    };
-    check(); // check ngay khi load
-    const handler = (e: StorageEvent) => { if (e.key === 'daily_tracker_invoice' && e.newValue) check(); };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, [parseInvoice, addInvoice]);
-
-  // Cách 4: Hash fragment — #invoice=BASE64
-  useEffect(() => {
-    try {
-      const hash = window.location.hash;
-      if (hash.startsWith('#invoice=')) {
-        const raw = hash.slice('#invoice='.length);
-        let parsed: unknown;
-        try { parsed = JSON.parse(atob(raw)); } catch { parsed = JSON.parse(decodeURIComponent(raw)); }
-        const inv = parseInvoice(parsed);
-        if (inv) addInvoice(inv);
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    } catch (_) { /* */ }
-  }, []);
 
   const activeChallenge = data.activeChallengeId ? data.challenges.find(c => c.id === data.activeChallengeId) : null;
   const activeTemplate = data.activeChallengeId ? getTemplate(data.activeChallengeId) : null;
@@ -1533,23 +1340,6 @@ export default function App() {
   // ===== LOADING SCREEN =====
   if (loading) return <LoadingScreen onDone={() => { setLoading(false); unlockAudio(); }} />;
 
-  // ===== INVOICE SCREEN =====
-  if (screen === 'invoices') return <InvoiceScreen
-    invoices={data.invoices || []}
-    onMarkRead={(id) => save({ ...data, invoices: (data.invoices || []).map(i => i.id === id ? { ...i, read: true } : i) })}
-    onDelete={(id) => save({ ...data, invoices: (data.invoices || []).filter(i => i.id !== id) })}
-    onImportToBudget={(inv) => {
-      // Import hóa đơn vào draft chi tiêu
-      const existingBills = data.draft?.bills || [];
-      const newBills = inv.items.map(item => ({ id: String(Date.now() + Math.random()), name: item.name, amount: item.amount, dueDay: new Date().getDate(), dueMonth: new Date().getMonth() + 1 }));
-      save({
-        ...data,
-        draft: { salary: data.draft?.salary || 0, bills: [...existingBills, ...newBills], spendingMoney: data.draft?.spendingMoney || 0, savedAt: new Date().toISOString() },
-      });
-      setScreen('budget');
-    }}
-    onBack={goHome}
-  />;
 
   // ===== PIGGY SCREEN =====
   if (screen === 'piggy') return <PiggyScreen
@@ -1639,11 +1429,9 @@ export default function App() {
         {/* HEO + HÓA ĐƠN + NHÁP — 1 hàng ngang gọn */}
         {(() => {
           const bal = (data.piggy || []).reduce((s, p) => s + (p.type === 'deposit' ? p.amount : -p.amount), 0);
-          const invs = data.invoices || [];
-          const unread = invs.filter(i => !i.read).length;
           const hasDraft = data.draft && data.draft.salary > 0;
           return (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-2 gap-2 mb-3">
               {/* Heo */}
               <div className="p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-5" onClick={() => { playClickByIndex(4); setScreen('piggy'); }}
                 style={{ background: bal > 0 ? 'linear-gradient(145deg, #1a1500, #040408)' : '#0a0a14', border: `2px outset ${bal > 0 ? '#ffd700' : '#333'}` }}>
@@ -1658,24 +1446,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Hóa đơn */}
-              <div className={`p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-3 ${unread > 0 ? 'border-glow' : ''}`}
-                onClick={() => { playClickByIndex(1); setScreen('invoices'); }}
-                style={{ background: '#001018', border: `2px outset ${unread > 0 ? '#00d4ff' : '#1a2a3a'}` }}>
-                <div className="flex items-center gap-2">
-                  <Ic src="/images/y2k-lightning.png" size={24} className={unread > 0 ? 'animate-float' : ''} />
-                  <div className="min-w-0 flex-1">
-                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '12px', color: unread > 0 ? '#00d4ff' : '#444' }}>HÓA ĐƠN</p>
-                    <p style={{ fontFamily: "'VT323', monospace", fontSize: '14px', color: unread > 0 ? '#aaa' : '#444' }}>
-                      {invs.length === 0 ? 'Trống' : `${invs.length}${unread > 0 ? ` (${unread}!)` : ''}`}
-                    </p>
-                  </div>
-                  {unread > 0 && <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: '#ff2020', fontSize: '10px', fontFamily: "'Press Start 2P'", color: '#fff' }}>{unread}</div>}
-                </div>
-              </div>
-
               {/* Bản nháp (hoặc nút chi tiêu) */}
-              <div className={`p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-2 ${hasDraft ? '' : 'col-span-2 sm:col-span-1'}`}
+              <div className="p-2.5 rounded-[14px] cursor-pointer y2k-card tilt-2"
                 onClick={() => { playNavigate(); setScreen('budget'); }}
                 style={{ background: hasDraft ? '#000a10' : '#080812', border: `2px outset ${hasDraft ? '#00d4ff88' : '#333'}` }}>
                 <div className="flex items-center gap-2">
